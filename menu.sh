@@ -19,7 +19,7 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   # Instalación 100% silenciosa
   export DEBIAN_FRONTEND=noninteractive
   apt update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold"
-  apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake
+  apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake nano
 
   echo -e "\e[1;37m[*] Configurando reglas de red y liberando firewall...\e[0m"
   # Liberar puertos en iptables automáticamente
@@ -120,7 +120,7 @@ configurar_banner() {
   echo -e "${Cian}====================================================${Fin}"
   echo -e "${Amarillo}             CONFIGURAR BANNER SSH                 ${Fin}"
   echo -e "${Cian}====================================================${Fin}"
-  echo -e " ${Cian}[1]${Fin} ${Blanco}Establecer o cambiar texto/HTML del Banner${Fin}"
+  echo -e " ${Cian}[1]${Fin} ${Blanco}Editar Banner en Nano${Fin}"
   echo -e " ${Cian}[2]${Fin} ${Rojo}Eliminar Banner actual${Fin}"
   echo -e " ${Cian}[0]${Fin} ${Blanco}Volver${Fin}"
   echo -e "${Cian}====================================================${Fin}"
@@ -128,22 +128,8 @@ configurar_banner() {
 
   case $opc_banner in
     1)
-      echo -e ""
-      echo -e "${Amarillo}[*] Escribe o pega tu Banner (en texto plano o código HTML/BBCode).${Fin}"
-      echo -e "${Amarillo}[*] Para terminar y guardar, presiona Enter e introduce la palabra 'GUARDAR'.${Fin}"
-      echo -e "${Cian}----------------------------------------------------${Fin}"
+      nano /etc/issue.net
       
-      tmp_banner=$(mktemp)
-      while IFS= read -r line; do
-        if [ "$line" = "GUARDAR" ]; then
-          break
-        fi
-        echo "$line" >> "$tmp_banner"
-      done
-
-      cp "$tmp_banner" /etc/issue.net
-      rm -f "$tmp_banner"
-
       # Asegurar que OpenSSH apunte a /etc/issue.net
       if grep -q "^Banner" /etc/ssh/sshd_config; then
         sed -i 's|^Banner.*|Banner /etc/issue.net|' /etc/ssh/sshd_config
@@ -152,7 +138,7 @@ configurar_banner() {
       fi
 
       systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
-      echo -e "${Verde}[+] ¡Banner SSH guardado y activado exitosamente!${Fin}"
+      echo -e "${Verde}[+] ¡Banner SSH actualizado y aplicado!${Fin}"
       ;;
     2)
       > /etc/issue.net
