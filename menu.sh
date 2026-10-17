@@ -14,14 +14,76 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   echo -e "\e[1;36m====================================================\e[0m"
   echo -e "\e[1;33m    INSTALANDO DEPENDENCIAS - RUSSO NETFREE         \e[0m"
   echo -e "\e[1;36m====================================================\e[0m"
-  echo -e "\e[1;37m[*] Actualizando sistema de forma silenciosa e instalando requisitos...\e[0m"
+  echo -e "\e[1;37m[*] Actualizando sistema e instalando herramientas...\e[0m"
   
+  # Instalación 100% silenciosa
   export DEBIAN_FRONTEND=noninteractive
   apt update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold"
   apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake
+
+  echo -e "\e[1;37m[*] Configurando reglas de red y liberando firewall...\e[0m"
+  # Liberar puertos en iptables automáticamente
+  iptables -F
+  iptables -X
+  iptables -t nat -F
+  iptables -t nat -X
+  iptables -P INPUT ACCEPT
+  iptables -P FORWARD ACCEPT
+  iptables -P OUTPUT ACCEPT
+  iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+
+  echo -e "\e[1;37m[*] Configurando e iniciando WebSocket en Puerto 80...\e[0m"
+  # Crear script del proxy WebSocket
+  cat << 'EOF' > /usr/local/bin/ws_proxy.py
+import socket, select, threading
+
+def handle_client(client_sock):
+    try:
+        request = client_sock.recv(4096)
+        if not request:
+            client_sock.close()
+            return
+        ssh_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ssh_sock.connect(('127.0.0.1', 22))
+        client_sock.sendall(b'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')
+        sockets = [client_sock, ssh_sock]
+        while True:
+            r, w, e = select.select(sockets, [], [], 60)
+            if not r: break
+            if client_sock in r:
+                data = client_sock.recv(4096)
+                if not data: break
+                ssh_sock.sendall(data)
+            if ssh_sock in r:
+                data = ssh_sock.recv(4096)
+                if not data: break
+                client_sock.sendall(data)
+    except:
+        pass
+    finally:
+        client_sock.close()
+        try: ssh_sock.close()
+        except: pass
+
+def start_proxy():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('0.0.0.0', 80))
+    s.listen(500)
+    while True:
+        client, _ = s.accept()
+        threading.Thread(target=handle_client, args=(client,)).start()
+
+if __name__ == '__main__':
+    start_proxy()
+EOF
+
+  # Iniciar WebSocket al instalar
+  pkill -f ws_proxy.py 2>/dev/null
+  nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
   
   touch "$INSTALL_CHECK"
-  echo -e "\e[1;32m[+] ¡Instalación base completada con éxito!\e[0m"
+  echo -e "\e[1;32m[+] ¡Instalación y configuración completadas automáticamente!\e[0m"
   sleep 2
 fi
 
@@ -72,7 +134,7 @@ while true; do
   echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
   echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
-  echo -e " ${Cian}[05]${Fin} ${Blanco}Iniciar Servicio WebSocket (Puerto 80)${Fin}"
+  echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar Servicio WebSocket (Puerto 80)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Activar BadVPN UDPGW (Puerto 7300)${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
   echo -e "${Cian}====================================================${Fin}"
@@ -126,57 +188,10 @@ while true; do
       ;;
     5)
       echo -e ""
-      echo -e "${Cian}[*] Iniciando servicio WebSocket Proxy robusto en el puerto 80...${Fin}"
-      if command -v python3 &>/dev/null; then
-        pkill -f ws_proxy.py 2>/dev/null
-        cat << 'EOF' > /usr/local/bin/ws_proxy.py
-import socket, select, threading
-
-def handle_client(client_sock):
-    try:
-        request = client_sock.recv(4096)
-        if not request:
-            client_sock.close()
-            return
-        ssh_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        ssh_sock.connect(('127.0.0.1', 22))
-        client_sock.sendall(b'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')
-        sockets = [client_sock, ssh_sock]
-        while True:
-            r, w, e = select.select(sockets, [], [], 60)
-            if not r: break
-            if client_sock in r:
-                data = client_sock.recv(4096)
-                if not data: break
-                ssh_sock.sendall(data)
-            if ssh_sock in r:
-                data = ssh_sock.recv(4096)
-                if not data: break
-                client_sock.sendall(data)
-    except:
-        pass
-    finally:
-        client_sock.close()
-        try: ssh_sock.close()
-        except: pass
-
-def start_proxy():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(('0.0.0.0', 80))
-    s.listen(500)
-    while True:
-        client, _ = s.accept()
-        threading.Thread(target=handle_client, args=(client,)).start()
-
-if __name__ == '__main__':
-    start_proxy()
-EOF
-        nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
-        echo -e "${Verde}[+] Proxy WebSocket robusto activo en segundo plano en el puerto 80.${Fin}"
-      else
-        echo -e "${Rojo}[-] Python3 no está instalado.${Fin}"
-      fi
+      echo -e "${Cian}[*] Reiniciando servicio WebSocket Proxy en puerto 80...${Fin}"
+      pkill -f ws_proxy.py 2>/dev/null
+      nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
+      echo -e "${Verde}[+] Servicio WebSocket activo correctamente en el puerto 80.${Fin}"
       read -p " Presiona [Enter] para continuar..."
       ;;
     6)
