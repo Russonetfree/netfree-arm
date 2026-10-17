@@ -16,10 +16,12 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   echo -e "\e[1;96m====================================================\e[0m"
   echo -e "\e[1;97m[*] Actualizando sistema e instalando herramientas...\e[0m"
   
-  # Instalación 100% silenciosa
+  # Modo no interactivo para evitar pantallas violetas / prompts
   export DEBIAN_FRONTEND=noninteractive
-  apt update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold"
-  apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear
+  export NEEDRESTART_MODE=a
+  
+  apt-get update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef"
+  apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear
 
   echo -e "\e[1;97m[*] Configurando Dropbear en puertos 110 y 90...\e[0m"
   cat << 'EOF' > /etc/default/dropbear
@@ -189,11 +191,13 @@ check_autostart() {
   fi
 }
 
-# Función para instalar/activar Dropbear
+# Función para instalar/activar Dropbear sin alertas interactivas
 gestionar_dropbear() {
   echo -e ""
-  echo -e "${Cian}[*] Verificando e instalando Dropbear...${Fin}"
-  apt update -y && apt install dropbear -y
+  echo -e "${Cian}[*] Verificando e instalando Dropbear de forma silenciosa...${Fin}"
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
+  apt-get update -y && apt-get install -y -o Dpkg::Options::="--force-confold" dropbear
   
   cat << 'EOF' > /etc/default/dropbear
 NO_START=0
@@ -230,7 +234,7 @@ configurar_banner() {
       fi
       systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
       systemctl restart dropbear 2>/dev/null
-      echo -e "${Verde}[+] ¡Banner SSH actualizado y applied!${Fin}"
+      echo -e "${Verde}[+] ¡Banner SSH actualizado y aplicado!${Fin}"
       ;;
     2)
       > /etc/issue.net
