@@ -189,6 +189,25 @@ check_autostart() {
   fi
 }
 
+# Función para instalar/activar Dropbear
+gestionar_dropbear() {
+  echo -e ""
+  echo -e "${Cian}[*] Verificando e instalando Dropbear...${Fin}"
+  apt update -y && apt install dropbear -y
+  
+  cat << 'EOF' > /etc/default/dropbear
+NO_START=0
+DROPBEAR_PORT=110
+DROPBEAR_EXTRA_ARGS="-p 90"
+DROPBEAR_BANNER="/etc/issue.net"
+DROPBEAR_RECEIVE_WINDOW=65536
+EOF
+
+  systemctl enable dropbear >/dev/null 2>&1
+  systemctl restart dropbear
+  echo -e "${Verde}[+] Dropbear activo correctamente en los puertos 110 y 90.${Fin}"
+}
+
 # Función para configurar o modificar el banner SSH
 configurar_banner() {
   echo -e ""
@@ -318,12 +337,13 @@ while true; do
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
   echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
-  echo -e " ${Cian}[06]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
-  echo -e " ${Cian}[07]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
-  echo -e " ${Cian}[08]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
+  echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110 y 90)${Fin}"
+  echo -e " ${Cian}[07]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
+  echo -e " ${Cian}[08]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
+  echo -e " ${Cian}[09]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
-  read -p " Elige una opción [0-8]: " opcion
+  read -p " Elige una opción [0-9]: " opcion
 
   case $opcion in
     1)
@@ -377,14 +397,18 @@ while true; do
       read -p " Presiona [Enter] para continuar..."
       ;;
     6)
-      instalar_badvpn
+      gestionar_dropbear
       read -p " Presiona [Enter] para continuar..."
       ;;
     7)
-      configurar_banner
+      instalar_badvpn
       read -p " Presiona [Enter] para continuar..."
       ;;
     8)
+      configurar_banner
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    9)
       gestionar_autostart
       read -p " Presiona [Enter] para continuar..."
       ;;
