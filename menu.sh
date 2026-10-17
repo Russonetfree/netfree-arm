@@ -81,7 +81,25 @@ EOF
   # Iniciar WebSocket al instalar
   pkill -f ws_proxy.py 2>/dev/null
   nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
-  
+
+  echo -e "\e[1;37m[*] Aplicando Banner por defecto...\e[0m"
+  # Guardar banner por defecto en /etc/issue.net
+  cat << 'EOF' > /etc/issue.net
+<h3 style="text-align:center;">
+  <font color="#FF0000">RUSSONET VPN</font> 🎬 <font color="#FF7F50">Youtube</font><br>
+  📩 <font color="#FFAB00">Redes Sociales</font> | 🌐 <font color="#8FBC8F">Internet</font><br>
+  🙋🏽‍♂️ <font color="#E040FB">VideoLlamadas</font> | Contacto russotvbox77@gmail.com
+</h3>
+EOF
+
+  # Activar Banner en OpenSSH
+  if grep -q "^Banner" /etc/ssh/sshd_config; then
+    sed -i 's|^Banner.*|Banner /etc/issue.net|' /etc/ssh/sshd_config
+  else
+    echo "Banner /etc/issue.net" >> /etc/ssh/sshd_config
+  fi
+  systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
+
   touch "$INSTALL_CHECK"
   echo -e "\e[1;32m[+] ¡Instalación y configuración completadas automáticamente!\e[0m"
   sleep 2
@@ -95,6 +113,56 @@ Cian="\e[1;36m"
 Blanco="\e[1;37m"
 Magenta="\e[1;35m"
 Fin="\e[0m"
+
+# Función para configurar o modificar el banner SSH
+configurar_banner() {
+  echo -e ""
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e "${Amarillo}             CONFIGURAR BANNER SSH                 ${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e " ${Cian}[1]${Fin} ${Blanco}Establecer o cambiar texto/HTML del Banner${Fin}"
+  echo -e " ${Cian}[2]${Fin} ${Rojo}Eliminar Banner actual${Fin}"
+  echo -e " ${Cian}[0]${Fin} ${Blanco}Volver${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+  read -p " Elige una opción: " opc_banner
+
+  case $opc_banner in
+    1)
+      echo -e ""
+      echo -e "${Amarillo}[*] Escribe o pega tu Banner (en texto plano o código HTML/BBCode).${Fin}"
+      echo -e "${Amarillo}[*] Para terminar y guardar, presiona Enter e introduce la palabra 'GUARDAR'.${Fin}"
+      echo -e "${Cian}----------------------------------------------------${Fin}"
+      
+      tmp_banner=$(mktemp)
+      while IFS= read -r line; do
+        if [ "$line" = "GUARDAR" ]; then
+          break
+        fi
+        echo "$line" >> "$tmp_banner"
+      done
+
+      cp "$tmp_banner" /etc/issue.net
+      rm -f "$tmp_banner"
+
+      # Asegurar que OpenSSH apunte a /etc/issue.net
+      if grep -q "^Banner" /etc/ssh/sshd_config; then
+        sed -i 's|^Banner.*|Banner /etc/issue.net|' /etc/ssh/sshd_config
+      else
+        echo "Banner /etc/issue.net" >> /etc/ssh/sshd_config
+      fi
+
+      systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
+      echo -e "${Verde}[+] ¡Banner SSH guardado y activado exitosamente!${Fin}"
+      ;;
+    2)
+      > /etc/issue.net
+      echo -e "${Verde}[+] Banner SSH eliminado.${Fin}"
+      ;;
+    *)
+      return
+      ;;
+  esac
+}
 
 # Función para instalar y ejecutar BadVPN (udpgw)
 instalar_badvpn() {
@@ -136,9 +204,10 @@ while true; do
   echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar Servicio WebSocket (Puerto 80)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Activar BadVPN UDPGW (Puerto 7300)${Fin}"
+  echo -e " ${Cian}[07]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
   echo -e "${Cian}====================================================${Fin}"
-  read -p " Elige una opción [0-6]: " opcion
+  read -p " Elige una opción [0-7]: " opcion
 
   case $opcion in
     1)
@@ -196,6 +265,10 @@ while true; do
       ;;
     6)
       instalar_badvpn
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    7)
+      configurar_banner
       read -p " Presiona [Enter] para continuar..."
       ;;
     0)
