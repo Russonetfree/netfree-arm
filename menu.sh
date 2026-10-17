@@ -14,9 +14,10 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   echo -e "\e[1;36m====================================================\e[0m"
   echo -e "\e[1;33m    INSTALANDO DEPENDENCIAS - RUSSO NETFREE         \e[0m"
   echo -e "\e[1;36m====================================================\e[0m"
-  echo -e "\e[1;37m[*] Actualizando sistema e instalando herramientas...\e[0m"
+  echo -e "\e[1;37m[*] Actualizando sistema de forma silenciosa e instalando requisitos...\e[0m"
   
-  apt update -y && apt upgrade -y
+  export DEBIAN_FRONTEND=noninteractive
+  apt update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold"
   apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake
   
   touch "$INSTALL_CHECK"
@@ -127,8 +128,7 @@ while true; do
       echo -e ""
       echo -e "${Cian}[*] Iniciando servicio WebSocket Proxy robusto en el puerto 80...${Fin}"
       if command -v python3 &>/dev/null; then
-        pkill -f python3 2>/dev/null
-        # Creamos un script python temporal independiente para manejar hilos
+        pkill -f ws_proxy.py 2>/dev/null
         cat << 'EOF' > /usr/local/bin/ws_proxy.py
 import socket, select, threading
 
