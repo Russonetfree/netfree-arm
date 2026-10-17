@@ -19,7 +19,17 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   # Instalación 100% silenciosa
   export DEBIAN_FRONTEND=noninteractive
   apt update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold"
-  apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof
+  apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear
+
+  echo -e "\e[1;97m[*] Configurando Dropbear en puertos 110 y 90...\e[0m"
+  cat << 'EOF' > /etc/default/dropbear
+NO_START=0
+DROPBEAR_PORT=110
+DROPBEAR_EXTRA_ARGS="-p 90"
+DROPBEAR_BANNER="/etc/issue.net"
+DROPBEAR_RECEIVE_WINDOW=65536
+EOF
+  systemctl restart dropbear
 
   echo -e "\e[1;97m[*] Configurando reglas de red y liberando firewall...\e[0m"
   iptables -F
@@ -36,6 +46,7 @@ if [ ! -f "$INSTALL_CHECK" ]; then
 import socket, select, threading
 
 PORTS = [80, 8080]
+TARGET_PORT = 110  # Redirige a Dropbear
 
 def handle_client(client_sock):
     try:
@@ -44,7 +55,7 @@ def handle_client(client_sock):
             client_sock.close()
             return
         ssh_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        ssh_sock.connect(('127.0.0.1', 22))
+        ssh_sock.connect(('127.0.0.1', TARGET_PORT))
         client_sock.sendall(b'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')
         sockets = [client_sock, ssh_sock]
         while True:
@@ -199,6 +210,7 @@ configurar_banner() {
         echo "Banner /etc/issue.net" >> /etc/ssh/sshd_config
       fi
       systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
+      systemctl restart dropbear 2>/dev/null
       echo -e "${Verde}[+] ¡Banner SSH actualizado y aplicado!${Fin}"
       ;;
     2)
@@ -291,6 +303,7 @@ while true; do
   # SECCIÓN DE ESTADO DE SERVICIOS Y PUERTOS ESTILO BRASILEÑO / MX
   echo -e " ${Amarillo}PUERTOS Y SERVICIOS INSTALADOS:${Fin}"
   echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin} $(check_port 22)"
+  echo -e "  ${Blanco}• Dropbear (Puertos 110 y 90):${Fin} $(check_port 110)"
   echo -e "  ${Blanco}• WS Proxy (Puerto 80)      :${Fin} $(check_port 80)"
   echo -e "  ${Blanco}• WS Proxy (Puerto 8080)    :${Fin} $(check_port 8080)"
   echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
