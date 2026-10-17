@@ -11,18 +11,17 @@ INSTALL_CHECK="/etc/russo_installed"
 
 if [ ! -f "$INSTALL_CHECK" ]; then
   clear
-  echo -e "\e[1;36m====================================================\e[0m"
-  echo -e "\e[1;33m    INSTALANDO DEPENDENCIAS - RUSSO NETFREE         \e[0m"
-  echo -e "\e[1;36m====================================================\e[0m"
-  echo -e "\e[1;37m[*] Actualizando sistema e instalando herramientas...\e[0m"
+  echo -e "\e[1;96m====================================================\e[0m"
+  echo -e "\e[1;93m    INSTALANDO DEPENDENCIAS - RUSSO NETFREE         \e[0m"
+  echo -e "\e[1;96m====================================================\e[0m"
+  echo -e "\e[1;97m[*] Actualizando sistema e instalando herramientas...\e[0m"
   
   # Instalación 100% silenciosa
   export DEBIAN_FRONTEND=noninteractive
   apt update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold"
   apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake nano
 
-  echo -e "\e[1;37m[*] Configurando reglas de red y liberando firewall...\e[0m"
-  # Liberar puertos en iptables automáticamente
+  echo -e "\e[1;97m[*] Configurando reglas de red y liberando firewall...\e[0m"
   iptables -F
   iptables -X
   iptables -t nat -F
@@ -32,8 +31,7 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   iptables -P OUTPUT ACCEPT
   iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
 
-  echo -e "\e[1;37m[*] Configurando e iniciando WebSocket Proxy (Puertos 80 y 8080)...\e[0m"
-  # Crear script del proxy WebSocket multi-puerto (80 y 8080)
+  echo -e "\e[1;97m[*] Configurando e iniciando WebSocket Proxy (Puertos 80 y 8080)...\e[0m"
   cat << 'EOF' > /usr/local/bin/ws_proxy.py
 import socket, select, threading
 
@@ -81,12 +79,10 @@ if __name__ == '__main__':
         threading.Thread(target=listen_port, args=(p,)).start()
 EOF
 
-  # Iniciar WebSocket al instalar
   pkill -f ws_proxy.py 2>/dev/null
   nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
 
-  echo -e "\e[1;37m[*] Aplicando Banner por defecto...\e[0m"
-  # Guardar banner por defecto en /etc/issue.net con entidades HTML
+  echo -e "\e[1;97m[*] Aplicando Banner por defecto...\e[0m"
   cat << 'EOF' > /etc/issue.net
 <h3 style="text-align:center;">
   <font color="#FF0000">RUSSONET VPN</font> &#127916; <font color="#FF7F50">Youtube</font><br>
@@ -95,7 +91,6 @@ EOF
 </h3>
 EOF
 
-  # Activar Banner en OpenSSH
   if grep -q "^Banner" /etc/ssh/sshd_config; then
     sed -i 's|^Banner.*|Banner /etc/issue.net|' /etc/ssh/sshd_config
   else
@@ -104,17 +99,18 @@ EOF
   systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
 
   touch "$INSTALL_CHECK"
-  echo -e "\e[1;32m[+] ¡Instalación y configuración completadas automáticamente!\e[0m"
+  echo -e "\e[1;92m[+] ¡Instalación y configuración completadas automáticamente!\e[0m"
   sleep 2
 fi
 
-# Colores elegantes
-Rojo="\e[1;31m"
-Verde="\e[1;32m"
-Amarillo="\e[1;33m"
-Cian="\e[1;36m"
-Blanco="\e[1;37m"
-Magenta="\e[1;35m"
+# Colores brillantes de alta intensidad
+Rojo="\e[1;91m"
+Verde="\e[1;92m"
+Amarillo="\e[1;93m"
+Azul="\e[1;94m"
+Magenta="\e[1;95m"
+Cian="\e[1;96m"
+Blanco="\e[1;97m"
 Fin="\e[0m"
 
 # Función para configurar o modificar el banner SSH
@@ -206,11 +202,12 @@ instalar_badvpn() {
 while true; do
   clear
   echo -e "${Cian}====================================================${Fin}"
-  echo -e "${Amarillo}          ⚡ RUSSO NETFREE - PANEL VIP ⚡          ${Fin}"
+  # Título con efecto Prisma / Arcoíris brillante mezclado
+  echo -e "   \e[1;91m⚡\e[0m \e[1;93mR\e[1;92mU\e[1;96mS\e[1;94mS\e[1;95mO\e[0m \e[1;91mN\e[1;93mE\e[1;92mT\e[1;96mF\e[1;94mR\e[1;95mE\e[1;91mE\e[0m \e[1;93m-\e[0m \e[1;96mP\e[1;92mA\e[1;93mN\e[1;95mE\e[1;94mL\e[0m \e[1;91mV\e[1;92mI\e[1;93mP\e[0m \e[1;91m⚡\e[0m"
   echo -e "${Cian}====================================================${Fin}"
-  echo -e "${Blanco} Sistema : ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
-  echo -e "${Blanco} Hora    : ${Verde}$(date +%T)${Fin}"
-  echo -e "${Blanco} Firma   : ${Magenta}RUSSO NETFREE${Fin}"
+  echo -e " ${Blanco}Sistema :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
+  echo -e " ${Blanco}Hora    :${Fin} ${Amarillo}$(date +%T)${Fin}"
+  echo -e " ${Blanco}Firma   :${Fin} ${Magenta}RUSSO NETFREE${Fin}"
   echo -e "${Cian}====================================================${Fin}"
   echo -e " ${Cian}[01]${Fin} ${Blanco}Crear Usuario${Fin}"
   echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
