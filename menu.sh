@@ -230,7 +230,7 @@ configurar_banner() {
       fi
       systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
       systemctl restart dropbear 2>/dev/null
-      echo -e "${Verde}[+] ¡Banner SSH actualizado y aplicado!${Fin}"
+      echo -e "${Verde}[+] ¡Banner SSH actualizado y applied!${Fin}"
       ;;
     2)
       > /etc/issue.net
