@@ -32,10 +32,12 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   iptables -P OUTPUT ACCEPT
   iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
 
-  echo -e "\e[1;37m[*] Configurando e iniciando WebSocket en Puerto 80...\e[0m"
-  # Crear script del proxy WebSocket
+  echo -e "\e[1;37m[*] Configurando e iniciando WebSocket Proxy (Puertos 80 y 8080)...\e[0m"
+  # Crear script del proxy WebSocket multi-puerto (80 y 8080)
   cat << 'EOF' > /usr/local/bin/ws_proxy.py
 import socket, select, threading
+
+PORTS = [80, 8080]
 
 def handle_client(client_sock):
     try:
@@ -65,17 +67,18 @@ def handle_client(client_sock):
         try: ssh_sock.close()
         except: pass
 
-def start_proxy():
+def listen_port(port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(('0.0.0.0', 80))
+    s.bind(('0.0.0.0', port))
     s.listen(500)
     while True:
         client, _ = s.accept()
         threading.Thread(target=handle_client, args=(client,)).start()
 
 if __name__ == '__main__':
-    start_proxy()
+    for p in PORTS:
+        threading.Thread(target=listen_port, args=(p,)).start()
 EOF
 
   # Iniciar WebSocket al instalar
@@ -83,12 +86,12 @@ EOF
   nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
 
   echo -e "\e[1;37m[*] Aplicando Banner por defecto...\e[0m"
-  # Guardar banner por defecto en /etc/issue.net
+  # Guardar banner por defecto en /etc/issue.net con entidades HTML
   cat << 'EOF' > /etc/issue.net
 <h3 style="text-align:center;">
-  <font color="#FF0000">RUSSONET VPN</font> 🎬 <font color="#FF7F50">Youtube</font><br>
-  📩 <font color="#FFAB00">Redes Sociales</font> | 🌐 <font color="#8FBC8F">Internet</font><br>
-  🙋🏽‍♂️ <font color="#E040FB">VideoLlamadas</font> | Contacto russotvbox77@gmail.com
+  <font color="#FF0000">RUSSONET VPN</font> &#127916; <font color="#FF7F50">Youtube</font><br>
+  &#128233; <font color="#FFAB00">Redes Sociales</font> | &#127760; <font color="#8FBC8F">Internet</font><br>
+  &#128587;&#127997; <font color="#E040FB">VideoLlamadas</font> | Contacto russotvbox77@gmail.com
 </h3>
 EOF
 
@@ -129,20 +132,45 @@ configurar_banner() {
   case $opc_banner in
     1)
       nano /etc/issue.net
-      
-      # Asegurar que OpenSSH apunte a /etc/issue.net
       if grep -q "^Banner" /etc/ssh/sshd_config; then
         sed -i 's|^Banner.*|Banner /etc/issue.net|' /etc/ssh/sshd_config
       else
         echo "Banner /etc/issue.net" >> /etc/ssh/sshd_config
       fi
-
       systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
       echo -e "${Verde}[+] ¡Banner SSH actualizado y aplicado!${Fin}"
       ;;
     2)
       > /etc/issue.net
       echo -e "${Verde}[+] Banner SSH eliminado.${Fin}"
+      ;;
+    *)
+      return
+      ;;
+  esac
+}
+
+# Función para gestionar el Auto-inicio del Menú al iniciar sesión
+gestionar_autostart() {
+  echo -e ""
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e "${Amarillo}             AUTO-INICIO DEL MENÚ                  ${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e " ${Cian}[1]${Fin} ${Verde}Activar auto-inicio al entrar por SSH${Fin}"
+  echo -e " ${Cian}[2]${Fin} ${Rojo}Desactivar auto-inicio${Fin}"
+  echo -e " ${Cian}[0]${Fin} ${Blanco}Volver${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+  read -p " Elige una opción: " opc_auto
+
+  case $opc_auto in
+    1)
+      sed -i '/^menu$/d' /root/.bashrc
+      echo "menu" >> /root/.bashrc
+      echo -e "${Verde}[+] ¡Auto-inicio activado con éxito! El menú abrirá al iniciar sesión.${Fin}"
+      ;;
+    2)
+      sed -i '/^menu$/d' /root/.bashrc
+      echo -e "${Verde}[+] Auto-inicio desactivado.${Fin}"
       ;;
     *)
       return
@@ -188,12 +216,13 @@ while true; do
   echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
   echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
-  echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar Servicio WebSocket (Puerto 80)${Fin}"
+  echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Activar BadVPN UDPGW (Puerto 7300)${Fin}"
   echo -e " ${Cian}[07]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
+  echo -e " ${Cian}[08]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
   echo -e "${Cian}====================================================${Fin}"
-  read -p " Elige una opción [0-7]: " opcion
+  read -p " Elige una opción [0-8]: " opcion
 
   case $opcion in
     1)
@@ -243,10 +272,10 @@ while true; do
       ;;
     5)
       echo -e ""
-      echo -e "${Cian}[*] Reiniciando servicio WebSocket Proxy en puerto 80...${Fin}"
+      echo -e "${Cian}[*] Reiniciando WebSocket Proxy en puertos 80 y 8080...${Fin}"
       pkill -f ws_proxy.py 2>/dev/null
       nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
-      echo -e "${Verde}[+] Servicio WebSocket activo correctamente en el puerto 80.${Fin}"
+      echo -e "${Verde}[+] Servicio WebSocket activo correctamente en puertos 80 y 8080.${Fin}"
       read -p " Presiona [Enter] para continuar..."
       ;;
     6)
@@ -255,6 +284,10 @@ while true; do
       ;;
     7)
       configurar_banner
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    8)
+      gestionar_autostart
       read -p " Presiona [Enter] para continuar..."
       ;;
     0)
