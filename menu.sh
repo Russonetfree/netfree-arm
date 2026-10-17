@@ -19,7 +19,7 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   # Instalación 100% silenciosa
   export DEBIAN_FRONTEND=noninteractive
   apt update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold"
-  apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake nano
+  apt install -y python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof
 
   echo -e "\e[1;97m[*] Configurando reglas de red y liberando firewall...\e[0m"
   iptables -F
@@ -82,6 +82,21 @@ EOF
   pkill -f ws_proxy.py 2>/dev/null
   nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
 
+  echo -e "\e[1;97m[*] Compilando e instalando BadVPN (UDPGW)...\e[0m"
+  cd /tmp
+  rm -rf badvpn
+  git clone https://github.com/ambrop72/badvpn.git
+  mkdir -p /tmp/badvpn/build
+  cd /tmp/badvpn/build
+  cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
+  make
+  find /tmp/badvpn/build -name "badvpn-udpgw" -exec cp {} /usr/local/bin/ \;
+  rm -rf /tmp/badvpn
+
+  # Iniciar BadVPN automáticamente al instalar
+  pkill badvpn-udpgw 2>/dev/null
+  nohup /usr/local/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 500 --max-connections-for-client 8 > /dev/null 2>&1 &
+
   echo -e "\e[1;97m[*] Aplicando Banner por defecto...\e[0m"
   cat << 'EOF' > /etc/issue.net
 <h3 style="text-align:center;">
@@ -112,6 +127,25 @@ Magenta="\e[1;95m"
 Cian="\e[1;96m"
 Blanco="\e[1;97m"
 Fin="\e[0m"
+
+# Función para verificar el estado de un puerto/servicio
+check_port() {
+  local port=$1
+  if netstat -tuln 2>/dev/null | grep -q ":$port " || lsof -i :$port >/dev/null 2>&1; then
+    echo -e "${Verde}[ ONLINE ]${Fin}"
+  else
+    echo -e "${Rojo}[ OFFLINE ]${Fin}"
+  fi
+}
+
+# Función para verificar auto-inicio
+check_autostart() {
+  if grep -q "^menu$" /root/.bashrc 2>/dev/null; then
+    echo -e "${Verde}[ ONLINE ]${Fin}"
+  else
+    echo -e "${Rojo}[ OFFLINE ]${Fin}"
+  fi
+}
 
 # Función para configurar o modificar el banner SSH
 configurar_banner() {
@@ -174,25 +208,23 @@ gestionar_autostart() {
   esac
 }
 
-# Función para instalar y ejecutar BadVPN (udpgw)
+# Función para reiniciar/gestionar BadVPN (udpgw)
 instalar_badvpn() {
   echo -e ""
-  echo -e "${Cian}[*] Verificando e instalando dependencias para BadVPN...${Fin}"
-  apt update -y && apt install cmake build-essential git -y
-
   if [ ! -f /usr/local/bin/badvpn-udpgw ]; then
-    echo -e "${Cian}[*] Descargando y compilando BadVPN...${Fin}"
+    echo -e "${Cian}[*] Compilando BadVPN por única vez...${Fin}"
     cd /tmp
+    rm -rf badvpn
     git clone https://github.com/ambrop72/badvpn.git
-    mkdir /tmp/badvpn/build
+    mkdir -p /tmp/badvpn/build
     cd /tmp/badvpn/build
     cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
     make
-    cp badvpn-udpgw /usr/local/bin/
+    find /tmp/badvpn/build -name "badvpn-udpgw" -exec cp {} /usr/local/bin/ \;
     rm -rf /tmp/badvpn
   fi
 
-  echo -e "${Verde}[*] Iniciando BadVPN UDPGW en el puerto 7300...${Fin}"
+  echo -e "${Verde}[*] Reiniciando BadVPN UDPGW en el puerto 7300...${Fin}"
   pkill badvpn-udpgw 2>/dev/null
   nohup /usr/local/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 500 --max-connections-for-client 8 > /dev/null 2>&1 &
   
@@ -201,13 +233,22 @@ instalar_badvpn() {
 
 while true; do
   clear
-  # Banner Gigante ASCII con Degradado Multicolor estilo ChumoGH
+  # Banner Gigante ASCII con Degradado Multicolor
   echo -e "\e[1;92m   ____  _   _ ____ ____   ___ \e[1;93m _   _ _____ _____ _____ ____  _____ \e[0m"
   echo -e "\e[1;92m  |  _ \| | | / ___/ ___| / _ \ \e[1;93m| \ | | ____|_   _| ____|  _ \| ____|\e[0m"
   echo -e "\e[1;93m  | |_) | | | \___ \___ \| | | |\e[1;91m|  \| |  _|   | | |  _| | |_) |  _|  \e[0m"
   echo -e "\e[1;93m  |  _ <| |_| |___) |__) | |_| |\e[1;91m| |\  | |___  | | | |___|  _ <| |___ \e[0m"
   echo -e "\e[1;91m  |_| \_\\___/|____/____/ \___/ \e[1;95m|_| \_|_____| |_| |_____|_| \_\_____|\e[0m"
   echo -e "\e[1;95m                             [ PANEL VIP ]                             \e[0m"
+  echo -e "${Cian}=====================================================================${Fin}"
+  
+  # SECCIÓN DE ESTADO DE SERVICIOS Y PUERTOS ESTILO BRASILEÑO / MX
+  echo -e " ${Amarillo}PUERTOS Y SERVICIOS INSTALADOS:${Fin}"
+  echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin} $(check_port 22)"
+  echo -e "  ${Blanco}• WS Proxy (Puerto 80)      :${Fin} $(check_port 80)"
+  echo -e "  ${Blanco}• WS Proxy (Puerto 8080)    :${Fin} $(check_port 8080)"
+  echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
+  echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
   echo -e "${Cian}=====================================================================${Fin}"
   echo -e " ${Blanco}Sistema :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
   echo -e " ${Blanco}Hora    :${Fin} ${Amarillo}$(date +%T)${Fin}"
@@ -218,7 +259,7 @@ while true; do
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
   echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
-  echo -e " ${Cian}[06]${Fin} ${Blanco}Activar BadVPN UDPGW (Puerto 7300)${Fin}"
+  echo -e " ${Cian}[06]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
   echo -e " ${Cian}[07]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
   echo -e " ${Cian}[08]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
@@ -241,7 +282,6 @@ while true; do
       read -p " Presiona [Enter] para continuar..."
       ;;
     2)
-      echo -e ""
       read -p " Usuario al que deseas cambiar la contraseña: " mod_user
       if id "$mod_user" &>/dev/null; then
         read -s -p " Nueva contraseña para $mod_user: " nueva_pass
@@ -254,7 +294,6 @@ while true; do
       read -p " Presiona [Enter] para continuar..."
       ;;
     3)
-      echo -e ""
       read -p " Usuario a eliminar: " del_user
       if id "$del_user" &>/dev/null; then
         userdel -r "$del_user"
