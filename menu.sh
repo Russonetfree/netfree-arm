@@ -16,12 +16,12 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   echo -e "\e[1;96m====================================================\e[0m"
   echo -e "\e[1;97m[*] Actualizando sistema e instalando herramientas...\e[0m"
   
-  # Modo no interactivo para evitar pantallas violetas / prompts
+  # Modo 100% no interactivo para evitar pantallas de configuración
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
   
   apt-get update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef"
-  apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear
+  apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear stunnel4
 
   echo -e "\e[1;97m[*] Configurando Dropbear en puertos 110 y 90...\e[0m"
   cat << 'EOF' > /etc/default/dropbear
@@ -31,7 +31,28 @@ DROPBEAR_EXTRA_ARGS="-p 90"
 DROPBEAR_BANNER="/etc/issue.net"
 DROPBEAR_RECEIVE_WINDOW=65536
 EOF
+  systemctl enable dropbear >/dev/null 2>&1
   systemctl restart dropbear
+
+  echo -e "\e[1;97m[*] Configurando Stunnel4 (SSL Puerto 443)...\e[0m"
+  # Generar certificado autofirmado para Stunnel
+  openssl req -new -x509 -days 3650 -nodes -out /etc/stunnel/stunnel.pem -keyout /etc/stunnel/stunnel.pem -subj "/CN=RussoNet/O=RussoNet/C=DO" 2>/dev/null
+
+  cat << 'EOF' > /etc/stunnel/stunnel.conf
+cert = /etc/stunnel/stunnel.pem
+client = no
+socket = a:SO_REUSEADDR=1
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
+
+[stunnel]
+accept = 443
+connect = 127.0.0.1:110
+EOF
+
+  sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/stunnel4
+  systemctl enable stunnel4 >/dev/null 2>&1
+  systemctl restart stunnel4
 
   echo -e "\e[1;97m[*] Configurando reglas de red y liberando firewall...\e[0m"
   iptables -F
@@ -138,7 +159,7 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable badvpn.service >/dev/null 2>&1
+  systemctl enable bavarvpn.service >/dev/null 2>&1
   systemctl restart badvpn.service
 
   echo -e "\e[1;97m[*] Aplicando Banner por defecto...\e[0m"
@@ -191,10 +212,10 @@ check_autostart() {
   fi
 }
 
-# Función para instalar/activar Dropbear sin alertas interactivas
+# Función para instalar/activar Dropbear sin alertas
 gestionar_dropbear() {
   echo -e ""
-  echo -e "${Cian}[*] Verificando e instalando Dropbear de forma silenciosa...${Fin}"
+  echo -e "${Cian}[*] Verificando e instalando Dropbear...${Fin}"
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
   apt-get update -y && apt-get install -y -o Dpkg::Options::="--force-confold" dropbear
@@ -210,6 +231,36 @@ EOF
   systemctl enable dropbear >/dev/null 2>&1
   systemctl restart dropbear
   echo -e "${Verde}[+] Dropbear activo correctamente en los puertos 110 y 90.${Fin}"
+}
+
+# Función para instalar/activar Stunnel4 (SSL Puerto 443)
+gestionar_stunnel() {
+  echo -e ""
+  echo -e "${Cian}[*] Instalando y configurando SSL Tunnel (Stunnel4 en puerto 443)...${Fin}"
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
+  apt-get update -y && apt-get install -y -o Dpkg::Options::="--force-confold" stunnel4
+
+  if [ ! -f /etc/stunnel/stunnel.pem ]; then
+    openssl req -new -x509 -days 3650 -nodes -out /etc/stunnel/stunnel.pem -keyout /etc/stunnel/stunnel.pem -subj "/CN=RussoNet/O=RussoNet/C=DO" 2>/dev/null
+  fi
+
+  cat << 'EOF' > /etc/stunnel/stunnel.conf
+cert = /etc/stunnel/stunnel.pem
+client = no
+socket = a:SO_REUSEADDR=1
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
+
+[stunnel]
+accept = 443
+connect = 127.0.0.1:110
+EOF
+
+  sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/stunnel4
+  systemctl enable stunnel4 >/dev/null 2>&1
+  systemctl restart stunnel4
+  echo -e "${Verde}[+] SSL Tunnel (Stunnel4) activo y escuchando en el puerto 443.${Fin}"
 }
 
 # Función para configurar o modificar el banner SSH
@@ -234,11 +285,12 @@ configurar_banner() {
       fi
       systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
       systemctl restart dropbear 2>/dev/null
-      echo -e "${Verde}[+] ¡Banner SSH actualizado y aplicado!${Fin}"
+      systemctl restart stunnel4 2>/dev/null
+      echo -e "${Verde}[+] ¡Banner actualizado y aplicado!${Fin}"
       ;;
     2)
       > /etc/issue.net
-      echo -e "${Verde}[+] Banner SSH eliminado.${Fin}"
+      echo -e "${Verde}[+] Banner eliminado.${Fin}"
       ;;
     *)
       return
@@ -262,7 +314,7 @@ gestionar_autostart() {
     1)
       sed -i '/^menu$/d' /root/.bashrc
       echo "menu" >> /root/.bashrc
-      echo -e "${Verde}[+] ¡Auto-inicio activado con éxito! El menú abrirá al iniciar sesión.${Fin}"
+      echo -e "${Verde}[+] ¡Auto-inicio activado con éxito!${Fin}"
       ;;
     2)
       sed -i '/^menu$/d' /root/.bashrc
@@ -309,7 +361,7 @@ EOF
   systemctl enable badvpn.service >/dev/null 2>&1
   systemctl restart badvpn.service
   
-  echo -e "${Verde}[+] BadVPN (UDP Gateway) activo de forma permanente en el puerto 7300.${Fin}"
+  echo -e "${Verde}[+] BadVPN activo de forma permanente en el puerto 7300.${Fin}"
 }
 
 while true; do
@@ -323,10 +375,11 @@ while true; do
   echo -e "\e[1;95m                             [ PANEL VIP ]                             \e[0m"
   echo -e "${Cian}=====================================================================${Fin}"
   
-  # SECCIÓN DE ESTADO DE SERVICIOS Y PUERTOS ESTILO BRASILEÑO / MX
+  # SECCIÓN DE ESTADO DE SERVICIOS Y PUERTOS
   echo -e " ${Amarillo}PUERTOS Y SERVICIOS INSTALADOS:${Fin}"
   echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin} $(check_port 22)"
-  echo -e "  ${Blanco}• Dropbear (Puertos 110 y 90):${Fin} $(check_port 110)"
+  echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
+  echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
   echo -e "  ${Blanco}• WS Proxy (Puerto 80)      :${Fin} $(check_port 80)"
   echo -e "  ${Blanco}• WS Proxy (Puerto 8080)    :${Fin} $(check_port 8080)"
   echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
@@ -341,13 +394,14 @@ while true; do
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
   echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
-  echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110 y 90)${Fin}"
-  echo -e " ${Cian}[07]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
-  echo -e " ${Cian}[08]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
-  echo -e " ${Cian}[09]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
+  echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
+  echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
+  echo -e " ${Cian}[08]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
+  echo -e " ${Cian}[09]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
+  echo -e " ${Cian}[10]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
-  read -p " Elige una opción [0-9]: " opcion
+  read -p " Elige una opción [0-10]: " opcion
 
   case $opcion in
     1)
@@ -397,7 +451,7 @@ while true; do
       echo -e ""
       echo -e "${Cian}[*] Reiniciando WebSocket Proxy en puertos 80 y 8080...${Fin}"
       systemctl restart ws_proxy.service
-      echo -e "${Verde}[+] Servicio WebSocket activo correctamente en puertos 80 y 8080.${Fin}"
+      echo -e "${Verde}[+] Servicio WebSocket activo correctamente.${Fin}"
       read -p " Presiona [Enter] para continuar..."
       ;;
     6)
@@ -405,14 +459,18 @@ while true; do
       read -p " Presiona [Enter] para continuar..."
       ;;
     7)
-      instalar_badvpn
+      gestionar_stunnel
       read -p " Presiona [Enter] para continuar..."
       ;;
     8)
-      configurar_banner
+      instalar_badvpn
       read -p " Presiona [Enter] para continuar..."
       ;;
     9)
+      configurar_banner
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    10)
       gestionar_autostart
       read -p " Presiona [Enter] para continuar..."
       ;;
