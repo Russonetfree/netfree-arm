@@ -79,8 +79,24 @@ if __name__ == '__main__':
         threading.Thread(target=listen_port, args=(p,)).start()
 EOF
 
-  pkill -f ws_proxy.py 2>/dev/null
-  nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
+  # Servicio Systemd para WebSocket Proxy
+  cat << 'EOF' > /etc/systemd/system/ws_proxy.service
+[Unit]
+Description=WebSocket Proxy Service RUSSO
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/bin/ws_proxy.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable ws_proxy.service >/dev/null 2>&1
+  systemctl restart ws_proxy.service
 
   echo -e "\e[1;97m[*] Compilando e instalando BadVPN (UDPGW)...\e[0m"
   cd /tmp
@@ -93,9 +109,24 @@ EOF
   find /tmp/badvpn/build -name "badvpn-udpgw" -exec cp {} /usr/local/bin/ \;
   rm -rf /tmp/badvpn
 
-  # Iniciar BadVPN automáticamente al instalar
-  pkill badvpn-udpgw 2>/dev/null
-  nohup /usr/local/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 500 --max-connections-for-client 8 > /dev/null 2>&1 &
+  # Servicio Systemd para BadVPN UDPGW
+  cat << 'EOF' > /etc/systemd/system/badvpn.service
+[Unit]
+Description=BadVPN UDP Gateway Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 500 --max-connections-for-client 8
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable badvpn.service >/dev/null 2>&1
+  systemctl restart badvpn.service
 
   echo -e "\e[1;97m[*] Aplicando Banner por defecto...\e[0m"
   cat << 'EOF' > /etc/issue.net
@@ -208,7 +239,7 @@ gestionar_autostart() {
   esac
 }
 
-# Función para reiniciar/gestionar BadVPN (udpgw)
+# Función para reiniciar/gestionar BadVPN (udpgw) como servicio persistente
 instalar_badvpn() {
   echo -e ""
   if [ ! -f /usr/local/bin/badvpn-udpgw ]; then
@@ -224,11 +255,26 @@ instalar_badvpn() {
     rm -rf /tmp/badvpn
   fi
 
-  echo -e "${Verde}[*] Reiniciando BadVPN UDPGW en el puerto 7300...${Fin}"
-  pkill badvpn-udpgw 2>/dev/null
-  nohup /usr/local/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 500 --max-connections-for-client 8 > /dev/null 2>&1 &
+  echo -e "${Verde}[*] Configurando BadVPN UDPGW como servicio persistente...${Fin}"
+  cat << 'EOF' > /etc/systemd/system/badvpn.service
+[Unit]
+Description=BadVPN UDP Gateway Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 500 --max-connections-for-client 8
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable badvpn.service >/dev/null 2>&1
+  systemctl restart badvpn.service
   
-  echo -e "${Verde}[+] BadVPN (UDP Gateway) activo correctamente en el puerto 7300.${Fin}"
+  echo -e "${Verde}[+] BadVPN (UDP Gateway) activo de forma permanente en el puerto 7300.${Fin}"
 }
 
 while true; do
@@ -313,8 +359,7 @@ while true; do
     5)
       echo -e ""
       echo -e "${Cian}[*] Reiniciando WebSocket Proxy en puertos 80 y 8080...${Fin}"
-      pkill -f ws_proxy.py 2>/dev/null
-      nohup python3 /usr/local/bin/ws_proxy.py > /dev/null 2>&1 &
+      systemctl restart ws_proxy.service
       echo -e "${Verde}[+] Servicio WebSocket activo correctamente en puertos 80 y 8080.${Fin}"
       read -p " Presiona [Enter] para continuar..."
       ;;
