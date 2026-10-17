@@ -103,7 +103,7 @@ EOF
   sleep 2
 fi
 
-# Colores brillantes de alta intensidad
+# Colores brillantes ANSI
 Rojo="\e[1;91m"
 Verde="\e[1;92m"
 Amarillo="\e[1;93m"
@@ -201,14 +201,18 @@ instalar_badvpn() {
 
 while true; do
   clear
-  echo -e "${Cian}====================================================${Fin}"
-  # Título con efecto Prisma / Arcoíris brillante mezclado
-  echo -e "   \e[1;91m⚡\e[0m \e[1;93mR\e[1;92mU\e[1;96mS\e[1;94mS\e[1;95mO\e[0m \e[1;91mN\e[1;93mE\e[1;92mT\e[1;96mF\e[1;94mR\e[1;95mE\e[1;91mE\e[0m \e[1;93m-\e[0m \e[1;96mP\e[1;92mA\e[1;93mN\e[1;95mE\e[1;94mL\e[0m \e[1;91mV\e[1;92mI\e[1;93mP\e[0m \e[1;91m⚡\e[0m"
-  echo -e "${Cian}====================================================${Fin}"
+  # Banner Gigante ASCII con Degradado Multicolor estilo ChumoGH
+  echo -e "\e[1;92m   ____  _   _ ____ ____   ___ \e[1;93m _   _ _____ _____ _____ ____  _____ \e[0m"
+  echo -e "\e[1;92m  |  _ \| | | / ___/ ___| / _ \ \e[1;93m| \ | | ____|_   _| ____|  _ \| ____|\e[0m"
+  echo -e "\e[1;93m  | |_) | | | \___ \___ \| | | |\e[1;91m|  \| |  _|   | | |  _| | |_) |  _|  \e[0m"
+  echo -e "\e[1;93m  |  _ <| |_| |___) |__) | |_| |\e[1;91m| |\  | |___  | | | |___|  _ <| |___ \e[0m"
+  echo -e "\e[1;91m  |_| \_\\___/|____/____/ \___/ \e[1;95m|_| \_|_____| |_| |_____|_| \_\_____|\e[0m"
+  echo -e "\e[1;95m                             [ PANEL VIP ]                             \e[0m"
+  echo -e "${Cian}=====================================================================${Fin}"
   echo -e " ${Blanco}Sistema :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
   echo -e " ${Blanco}Hora    :${Fin} ${Amarillo}$(date +%T)${Fin}"
-  echo -e " ${Blanco}Firma   :${Fin} ${Magenta}RUSSO NETFREE${Fin}"
-  echo -e "${Cian}====================================================${Fin}"
+  echo -e " ${Blanco}Firma   :${Fin} ${Magenta}RUSSO NETFREE VIP${Fin}"
+  echo -e "${Cian}=====================================================================${Fin}"
   echo -e " ${Cian}[01]${Fin} ${Blanco}Crear Usuario${Fin}"
   echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
@@ -218,7 +222,7 @@ while true; do
   echo -e " ${Cian}[07]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
   echo -e " ${Cian}[08]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
-  echo -e "${Cian}====================================================${Fin}"
+  echo -e "${Cian}=====================================================================${Fin}"
   read -p " Elige una opción [0-8]: " opcion
 
   case $opcion in
@@ -288,7 +292,7 @@ while true; do
       read -p " Presiona [Enter] para continuar..."
       ;;
     0)
-      echo -e "${Amarillo}Saliendo del panel... ¡Disfruta RUSSO NETFREE!${Fin}"
+      echo -e "${Amarillo}Saliendo del panel... ¡Disfruta RUSSO NETFREE VIP!${Fin}"
       exit 0
       ;;
     *)
