@@ -21,7 +21,7 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   export NEEDRESTART_MODE=a
   
   apt-get update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef"
-  apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear stunnel4
+  apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear stunnel4 unzip
 
   echo -e "\e[1;97m[*] Configurando Dropbear en puertos 110 y 90...\e[0m"
   cat << 'EOF' > /etc/default/dropbear
@@ -68,7 +68,8 @@ EOF
 import socket, select, threading
 
 PORTS = [80, 8080]
-TARGET_PORT = 110  # Redirige a Dropbear
+SSH_PORT = 110
+V2RAY_INTERNAL_PORT = 10080
 
 def handle_client(client_sock):
     try:
@@ -76,26 +77,36 @@ def handle_client(client_sock):
         if not request:
             client_sock.close()
             return
-        ssh_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        ssh_sock.connect(('127.0.0.1', TARGET_PORT))
-        client_sock.sendall(b'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')
-        sockets = [client_sock, ssh_sock]
+        
+        # Si la petición incluye la ruta de V2Ray, redirige a V2Ray interno
+        if b"GET /russo" in request or b"Path: /russo" in request:
+            target_port = V2RAY_INTERNAL_PORT
+            target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            target_sock.connect(('127.0.0.1', target_port))
+            target_sock.sendall(request)
+        else:
+            target_port = SSH_PORT
+            target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            target_sock.connect(('127.0.0.1', target_port))
+            client_sock.sendall(b'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')
+
+        sockets = [client_sock, target_sock]
         while True:
             r, w, e = select.select(sockets, [], [], 60)
             if not r: break
             if client_sock in r:
                 data = client_sock.recv(4096)
                 if not data: break
-                ssh_sock.sendall(data)
-            if ssh_sock in r:
-                data = ssh_sock.recv(4096)
+                target_sock.sendall(data)
+            if target_sock in r:
+                data = target_sock.recv(4096)
                 if not data: break
                 client_sock.sendall(data)
     except:
         pass
     finally:
         client_sock.close()
-        try: ssh_sock.close()
+        try: target_sock.close()
         except: pass
 
 def listen_port(port):
@@ -279,6 +290,47 @@ EOF
   echo -e "${Verde}[+] SSL Tunnel (Stunnel4) activo y escuchando en el puerto 443.${Fin}"
 }
 
+# Función para instalar y activar V2Ray en puerto compartido 8080 (WS Path: /russo)
+gestionar_v2ray() {
+  echo -e ""
+  echo -e "${Cian}[*] Descargando e instalando V2Ray Core...${Fin}"
+  bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+  
+  mkdir -p /usr/local/etc/v2ray
+  cat << 'EOF' > /usr/local/etc/v2ray/config.json
+{
+  "inbounds": [{
+    "port": 10080,
+    "listen": "127.0.0.1",
+    "protocol": "vmess",
+    "settings": {
+      "clients": [
+        {
+          "id": "b83a38e2-36a3-4631-9a6d-e2511222e3eb",
+          "alterId": 0
+        }
+      ]
+    },
+    "streamSettings": {
+      "network": "ws",
+      "wsSettings": {
+        "path": "/russo"
+      }
+    }
+  }],
+  "outbounds": [{
+    "protocol": "freedom",
+    "settings": {}
+  }]
+}
+EOF
+
+  systemctl enable v2ray >/dev/null 2>&1
+  systemctl restart v2ray
+  systemctl restart ws_proxy.service
+  echo -e "${Verde}[+] V2Ray activo. Puedes conectar en los puertos 80 y 8080 con la ruta WebSocket '/russo'.${Fin}"
+}
+
 # Función para configurar o modificar el banner SSH
 configurar_banner() {
   echo -e ""
@@ -402,8 +454,8 @@ while true; do
   echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin} $(check_port 22)"
   echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
   echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
-  echo -e "  ${Blanco}• WS Proxy (Puerto 80)      :${Fin} $(check_port 80)"
-  echo -e "  ${Blanco}• WS Proxy (Puerto 8080)    :${Fin} $(check_port 8080)"
+  echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin} $(check_port 8080)"
+  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin} $(check_port 10080)"
   echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
   echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
   echo -e "${Cian}=====================================================================${Fin}"
@@ -417,12 +469,13 @@ while true; do
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
   echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
-  echo -e " ${Cian}[08]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
-  echo -e " ${Cian}[09]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
-  echo -e " ${Cian}[10]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
+  echo -e " ${Cian}[08]${Fin} ${Blanco}Instalar / Activar V2Ray en Puerto 8080/80${Fin}"
+  echo -e " ${Cian}[09]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
+  echo -e " ${Cian}[10]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
+  echo -e " ${Cian}[11]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
-  read -p " Elige una opción [0-10]: " opcion
+  read -p " Elige una opción [0-11]: " opcion
 
   case $opcion in
     1)
@@ -484,14 +537,18 @@ while true; do
       read -p " Presiona [Enter] para continuar..."
       ;;
     8)
-      instalar_badvpn
+      gestionar_v2ray
       read -p " Presiona [Enter] para continuar..."
       ;;
     9)
-      configurar_banner
+      instalar_badvpn
       read -p " Presiona [Enter] para continuar..."
       ;;
     10)
+      configurar_banner
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    11)
       gestionar_autostart
       read -p " Presiona [Enter] para continuar..."
       ;;
