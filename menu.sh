@@ -6,6 +6,17 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# LIMPIEZA PROFUNDA DE RASTROS DE OTROS SCRIPTS O INSTALACIONES PREVIAS
+echo -e "\e[1;93m[*] Limpiando rastros de scripts anteriores y liberando puertos...\e[0m"
+systemctl stop ws_proxy.service badvpn.service stunnel4 dropbear v2ray 2>/dev/null
+systemctl disable ws_proxy.service badvpn.service v2ray 2>/dev/null
+rm -f /etc/systemd/system/ws_proxy.service
+rm -f /etc/systemd/system/badvpn.service
+rm -f /usr/local/bin/ws_proxy.py
+rm -f /usr/local/bin/badvpn-udpgw
+rm -f /etc/russo_installed
+sed -i '/^menu$/d' /root/.bashrc
+
 # Archivo de control para la primera instalación
 INSTALL_CHECK="/etc/russo_installed"
 
@@ -22,6 +33,15 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   
   apt-get update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef"
   apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear stunnel4 unzip
+
+  echo -e "\e[1;97m[*] Aplicando Banner HTML colorido por defecto...\e[0m"
+  cat << 'EOF' > /etc/issue.net
+<h3 style="text-align:center;">
+  <font color="#FF0000">RUSSONET VPN</font> &#127916; <font color="#FF7F50">Youtube</font><br>
+  &#128233; <font color="#FFAB00">Redes Sociales</font> | &#127760; <font color="#8FBC8F">Internet</font><br>
+  &#128587;&#127997; <font color="#E040FB">VideoLlamadas</font> | Contacto russotvbox77@gmail.com
+</h3>
+EOF
 
   echo -e "\e[1;97m[*] Configurando Dropbear en puertos 110 y 90...\e[0m"
   cat << 'EOF' > /etc/default/dropbear
@@ -169,16 +189,6 @@ EOF
   systemctl enable badvpn.service >/dev/null 2>&1
   systemctl restart badvpn.service
 
-  # APLICAR BANNER HTML COLORIDO EXACTO
-  echo -e "\e[1;97m[*] Aplicando Banner HTML a los servicios SSH...\e[0m"
-  cat << 'EOF' > /etc/issue.net
-<h3 style="text-align:center;">
-  <font color="#FF0000">RUSSONET VPN</font> &#127916; <font color="#FF7F50">Youtube</font><br>
-  &#128233; <font color="#FFAB00">Redes Sociales</font> | &#127760; <font color="#8FBC8F">Internet</font><br>
-  &#128587;&#127997; <font color="#E040FB">VideoLlamadas</font> | Contacto russotvbox77@gmail.com
-</h3>
-EOF
-
   if grep -q "^Banner" /etc/ssh/sshd_config; then
     sed -i 's|^Banner.*|Banner /etc/issue.net|' /etc/ssh/sshd_config
   else
@@ -190,7 +200,7 @@ EOF
 
   touch "$INSTALL_CHECK"
   clear
-  echo -e "\e[1;92m[+] ¡Instalación completada con éxito! Abriendo panel...\e[0m"
+  echo -e "\e[1;92m[+] ¡Limpieza e instalación completadas con éxito! Abriendo panel...\e[0m"
   sleep 1
 fi
 
@@ -207,7 +217,7 @@ Fin="\e[0m"
 # Funciones de estado y recursos
 check_port() {
   local port=$1
-  if netstat -tuln 2>/dev/null | grep -q ":$port " \vert{}\vert{} lsof -i :$port >/dev/null 2>&1; then
+  if netstat -tuln 2>/dev/null | grep -q ":$port " || lsof -i :$port >/dev/null 2>&1; then
     echo -e "${Verde}[ ONLINE ]${Fin}"
   else
     echo -e "${Rojo}[ OFFLINE ]${Fin}"
@@ -332,10 +342,219 @@ EOF
 configurar_banner() {
   echo -e ""
   echo -e "${Cian}====================================================${Fin}"
-  echo -e "${Amarillo}             CONFIGURAR BANNER SSH${Fin}"
+  echo -e "${Amarillo}             CONFIGURAR BANNER SSH                 ${Fin}"
   echo -e "${Cian}====================================================${Fin}"
   echo -e " ${Cian}[1]${Fin} ${Blanco}Editar Banner en Nano${Fin}"
   echo -e " ${Cian}[2]${Fin} ${Rojo}Eliminar Banner actual${Fin}"
   echo -e " ${Cian}[0]${Fin} ${Blanco}Volver${Fin}"
   echo -e "${Cian}====================================================${Fin}"
   read -p " Elige una opción: " opc_banner
+
+  case $opc_banner in
+    1)
+      nano /etc/issue.net
+      systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
+      systemctl restart dropbear 2>/dev/null
+      systemctl restart stunnel4 2>/dev/null
+      echo -e "${Verde}[+] ¡Banner actualizado!${Fin}"
+      ;;
+    2)
+      > /etc/issue.net
+      echo -e "${Verde}[+] Banner eliminado.${Fin}"
+      ;;
+    *)
+      return
+      ;;
+  esac
+}
+
+gestionar_autostart() {
+  echo -e ""
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e "${Amarillo}             AUTO-INICIO DEL MENÚ                  ${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e " ${Cian}[1]${Fin} ${Verde}Activar auto-inicio al entrar por SSH${Fin}"
+  echo -e " ${Cian}[2]${Fin} ${Rojo}Desactivar auto-inicio${Fin}"
+  echo -e " ${Cian}[0]${Fin} ${Blanco}Volver${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+  read -p " Elige una opción: " opc_auto
+
+  case $opc_auto in
+    1)
+      sed -i '/^menu$/d' /root/.bashrc
+      echo "menu" >> /root/.bashrc
+      echo -e "${Verde}[+] ¡Auto-inicio activado!${Fin}"
+      ;;
+    2)
+      sed -i '/^menu$/d' /root/.bashrc
+      echo -e "${Verde}[+] Auto-inicio desactivado.${Fin}"
+      ;;
+    *)
+      return
+      ;;
+  esac
+}
+
+instalar_badvpn() {
+  echo -e ""
+  if [ ! -f /usr/local/bin/badvpn-udpgw ]; then
+    echo -e "${Cian}[*] Compilando BadVPN por única vez...${Fin}"
+    cd /tmp
+    rm -rf badvpn
+    git clone https://github.com/ambrop72/badvpn.git
+    mkdir -p /tmp/badvpn/build
+    cd /tmp/badvpn/build
+    cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
+    make
+    find /tmp/badvpn/build -name "badvpn-udpgw" -exec cp {} /usr/local/bin/ \;
+    rm -rf /tmp/badvpn
+  fi
+
+  cat << 'EOF' > /etc/systemd/system/badvpn.service
+[Unit]
+Description=BadVPN UDP Gateway Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 500 --max-connections-for-client 8
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable badvpn.service >/dev/null 2>&1
+  systemctl restart badvpn.service
+  echo -e "${Verde}[+] BadVPN activo en puerto 7300.${Fin}"
+}
+
+while true; do
+  clear
+  echo -e "\e[1;92m   ____  _   _ ____ ____   ___ \e[1;93m _   _ _____ _____ _____ ____  _____ \e[0m"
+  echo -e "\e[1;92m  |  _ \| | | / ___/ ___| / _ \ \e[1;93m| \ | | ____|_   _| ____|  _ \| ____|\e[0m"
+  echo -e "\e[1;93m  | |_) | | | \___ \___ \| | | |\e[1;91m|  \| |  _|   | | |  _| | |_) |  _|  \e[0m"
+  echo -e "\e[1;93m  |  _ <| |_| |___) |__) | |_| |\e[1;91m| |\  | |___  | | | |___|  _ <| |___ \e[0m"
+  echo -e "\e[1;91m  |_| \_\\___/|____/____/ \___/ \e[1;95m|_| \_|_____| |_| |_____|_| \_\_____|\e[0m"
+  echo -e "\e[1;95m                             [ PANEL VIP ]                             \e[0m"
+  echo -e "${Cian}=====================================================================${Fin}"
+  
+  echo -e " ${Amarillo}ESTADO Y CAPACIDAD DE LA VPS:${Fin}"
+  echo -e "  ${Blanco}• Sistema Operativo  :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
+  echo -e "  ${Blanco}• Uso de CPU         :${Fin} ${Amarillo}$(get_cpu_usage)${Fin}"
+  echo -e "  ${Blanco}• Memoria RAM        :${Fin} ${Cian}$(get_ram_usage)${Fin}"
+  echo -e "  ${Blanco}• Almacenamiento     :${Fin} ${Magenta}$(get_disk_usage)${Fin}"
+  echo -e "${Cian}---------------------------------------------------------------------${Fin}"
+  echo -e " ${Amarillo}PUERTOS Y SERVICIOS INSTALADOS:${Fin}"
+  echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin} $(check_port 22)"
+  echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
+  echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
+  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin} $(check_port 10080)"
+  echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin} $(check_port 8080)"
+  echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
+  echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
+  echo -e "${Cian}=====================================================================${Fin}"
+  echo -e " ${Blanco}Hora actual :${Fin} ${Amarillo}$(date +%T)${Fin}"
+  echo -e " ${Blanco}Firma       :${Fin} ${Magenta}RUSSO NETFREE VIP${Fin}"
+  echo -e "${Cian}=====================================================================${Fin}"
+  echo -e " ${Cian}[01]${Fin} ${Blanco}Crear Usuario${Fin}"
+  echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
+  echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
+  echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
+  echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
+  echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
+  echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
+  echo -e " ${Cian}[08]${Fin} ${Blanco}Instalar / Activar V2Ray en Puerto 8080/80${Fin}"
+  echo -e " ${Cian}[09]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
+  echo -e " ${Cian}[10]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
+  echo -e " ${Cian}[11]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
+  echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
+  echo -e "${Cian}=====================================================================${Fin}"
+  read -p " Elige una opción [0-11]: " opcion
+
+  case $opcion in
+    1)
+      echo -e ""
+      read -p " Nombre del nuevo usuario: " nuevo_user
+      if id "$nuevo_user" &>/dev/null; then
+        echo -e "${Rojo}[-] El usuario '$nuevo_user' ya existe.${Fin}"
+      else
+        read -s -p " Contraseña para $nuevo_user: " nuevo_pass
+        echo -e ""
+        useradd -m -s /bin/bash "$nuevo_user"
+        echo "$nuevo_user:$nuevo_pass" | chpasswd
+        echo -e "${Verde}[+] Usuario '$nuevo_user' creado con éxito.${Fin}"
+      fi
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    2)
+      read -p " Usuario al que deseas cambiar la contraseña: " mod_user
+      if id "$mod_user" &>/dev/null; then
+        read -s -p " Nueva contraseña para $mod_user: " nueva_pass
+        echo -e ""
+        echo "$mod_user:$nueva_pass" | chpasswd
+        echo -e "${Verde}[+] Contraseña de '$mod_user' actualizada correctamente.${Fin}"
+      else
+        echo -e "${Rojo}[-] El usuario no existe.${Fin}"
+      fi
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    3)
+      read -p " Usuario a eliminar: " del_user
+      if id "$del_user" &>/dev/null; then
+        userdel -r "$del_user"
+        echo -e "${Verde}[+] Usuario '$del_user' eliminado correctamente.${Fin}"
+      else
+        echo -e "${Rojo}[-] El usuario no existe.${Fin}"
+      fi
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    4)
+      echo -e ""
+      echo -e "${Amarillo}=== USUARIOS DEL SISTEMA ===${Fin}"
+      awk -F: '$3 >= 1000 {print $1}' /etc/passwd
+      echo -e "${Amarillo}============================${Fin}"
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    5)
+      echo -e ""
+      echo -e "${Cian}[*] Reiniciando WebSocket Proxy en puertos 80 y 8080...${Fin}"
+      systemctl restart ws_proxy.service
+      echo -e "${Verde}[+] Servicio WebSocket activo correctamente.${Fin}"
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    6)
+      gestionar_dropbear
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    7)
+      gestionar_stunnel
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    8)
+      gestionar_v2ray
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    9)
+      instalar_badvpn
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    10)
+      configurar_banner
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    11)
+      gestionar_autostart
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    0)
+      echo -e "${Amarillo}Saliendo del panel... ¡Disfruta RUSSO NETFREE VIP!${Fin}"
+      exit 0
+      ;;
+    *)
+      echo -e "${Rojo}Opción no válida.${Fin}"
+      sleep 1
+      ;;
+  esac
+done
