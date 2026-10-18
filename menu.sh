@@ -169,22 +169,30 @@ EOF
   systemctl enable badvpn.service >/dev/null 2>&1
   systemctl restart badvpn.service
 
-  # RESTAURANDO EL MINI BANNER SSH
-  echo -e "\e[1;97m[*] Aplicando Banner por defecto...\e[0m"
+  # INSERCIÓN AUTOMÁTICA DEL MINI BANNER SSH EN LA INSTALACIÓN
+  echo -e "\e[1;97m[*] Configurando Mini Banner SSH (/etc/issue.net)...\e[0m"
   cat << 'EOF' > /etc/issue.net
-<h3 style="text-align:center;">
-  <font color="#FF0000">RUSSONET VPN</font> &#127916; <font color="#FF7F50">Youtube</font><br>
-  &#128233; <font color="#FFAB00">Redes Sociales</font> | &#127760; <font color="#8FBC8F">Internet</font><br>
-  &#128587;&#127997; <font color="#E040FB">VideoLlamadas</font> | Contacto russotvbox77@gmail.com
-</h3>
+=====================================================
+            [ RUSSONET VIP - NETFREE ]
+=====================================================
+ ▶ YouTube / Redes Sociales / Internet Ilimitado
+ ▶ Contacto: russotvbox77@gmail.com
+=====================================================
 EOF
 
+  # Asegurar que OpenSSH y Dropbear lean el banner correctamente
   if grep -q "^Banner" /etc/ssh/sshd_config; then
     sed -i 's|^Banner.*|Banner /etc/issue.net|' /etc/ssh/sshd_config
   else
     echo "Banner /etc/issue.net" >> /etc/ssh/sshd_config
   fi
+  
+  # Forzar que OpenSSH acepte mostrar banners en conexiones interactivas
+  sed -i 's/#PrintMotd yes/PrintMotd yes/' /etc/ssh/sshd_config 2>/dev/null
+  sed -i 's/PrintMotd no/PrintMotd yes/' /etc/ssh/sshd_config 2>/dev/null
+
   systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
+  systemctl restart dropbear 2>/dev/null
 
   touch "$INSTALL_CHECK"
   clear
