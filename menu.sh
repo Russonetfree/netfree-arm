@@ -35,7 +35,6 @@ EOF
   systemctl restart dropbear
 
   echo -e "\e[1;97m[*] Configurando Stunnel4 (SSL Puerto 443)...\e[0m"
-  # Generar certificado autofirmado para Stunnel
   openssl req -new -x509 -days 3650 -nodes -out /etc/stunnel/stunnel.pem -keyout /etc/stunnel/stunnel.pem -subj "/CN=RussoNet/O=RussoNet/C=DO" 2>/dev/null
 
   cat << 'EOF' > /etc/stunnel/stunnel.conf
@@ -113,7 +112,6 @@ if __name__ == '__main__':
         threading.Thread(target=listen_port, args=(p,)).start()
 EOF
 
-  # Servicio Systemd para WebSocket Proxy
   cat << 'EOF' > /etc/systemd/system/ws_proxy.service
 [Unit]
 Description=WebSocket Proxy Service RUSSO
@@ -143,7 +141,6 @@ EOF
   find /tmp/badvpn/build -name "badvpn-udpgw" -exec cp {} /usr/local/bin/ \;
   rm -rf /tmp/badvpn
 
-  # Servicio Systemd para BadVPN UDPGW
   cat << 'EOF' > /etc/systemd/system/badvpn.service
 [Unit]
 Description=BadVPN UDP Gateway Service
@@ -159,7 +156,7 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable bavarvpn.service >/dev/null 2>&1
+  systemctl enable badvpn.service >/dev/null 2>&1
   systemctl restart badvpn.service
 
   echo -e "\e[1;97m[*] Aplicando Banner por defecto...\e[0m"
@@ -212,7 +209,26 @@ check_autostart() {
   fi
 }
 
-# Función para instalar/activar Dropbear sin alertas
+# Funciones de recursos de la VPS
+get_cpu_usage() {
+  read cpu a b c previdle rest < /proc/stat
+  prevtotal=$((a+b+c+previdle))
+  sleep 0.3
+  read cpu a b c idle rest < /proc/stat
+  total=$((a+b+c+idle))
+  cpu=$((100*((total-prevtotal) - (idle-previdle)) / (total-prevtotal) ))
+  echo "${cpu}%"
+}
+
+get_ram_usage() {
+  free -m | awk 'NR==2{printf "%.1fMB / %.1fMB (%.0f%%)", $3, $2, $3*100/$2 }'
+}
+
+get_disk_usage() {
+  df -h / | awk 'NR==2{print $3 " / " $2 " (" $5 ")"}'
+}
+
+# Función para instalar/activar Dropbear
 gestionar_dropbear() {
   echo -e ""
   echo -e "${Cian}[*] Verificando e instalando Dropbear...${Fin}"
@@ -375,7 +391,13 @@ while true; do
   echo -e "\e[1;95m                             [ PANEL VIP ]                             \e[0m"
   echo -e "${Cian}=====================================================================${Fin}"
   
-  # SECCIÓN DE ESTADO DE SERVICIOS Y PUERTOS
+  # SECCIÓN DE ESTADO DE RECURSOS DE LA VPS (SISTEMA, CPU, RAM Y DISCO)
+  echo -e " ${Amarillo}ESTADO Y CAPACIDAD DE LA VPS:${Fin}"
+  echo -e "  ${Blanco}• Sistema Operativo  :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
+  echo -e "  ${Blanco}• Uso de CPU         :${Fin} ${Amarillo}$(get_cpu_usage)${Fin}"
+  echo -e "  ${Blanco}• Memoria RAM        :${Fin} ${Cian}$(get_ram_usage)${Fin}"
+  echo -e "  ${Blanco}• Almacenamiento     :${Fin} ${Magenta}$(get_disk_usage)${Fin}"
+  echo -e "${Cian}---------------------------------------------------------------------${Fin}"
   echo -e " ${Amarillo}PUERTOS Y SERVICIOS INSTALADOS:${Fin}"
   echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin} $(check_port 22)"
   echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
@@ -385,9 +407,8 @@ while true; do
   echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
   echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
   echo -e "${Cian}=====================================================================${Fin}"
-  echo -e " ${Blanco}Sistema :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
-  echo -e " ${Blanco}Hora    :${Fin} ${Amarillo}$(date +%T)${Fin}"
-  echo -e " ${Blanco}Firma   :${Fin} ${Magenta}RUSSO NETFREE VIP${Fin}"
+  echo -e " ${Blanco}Hora actual :${Fin} ${Amarillo}$(date +%T)${Fin}"
+  echo -e " ${Blanco}Firma       :${Fin} ${Magenta}RUSSO NETFREE VIP${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
   echo -e " ${Cian}[01]${Fin} ${Blanco}Crear Usuario${Fin}"
   echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
