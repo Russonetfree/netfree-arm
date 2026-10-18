@@ -6,33 +6,26 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# LIMPIEZA PROFUNDA DE RASTROS DE OTROS SCRIPTS O INSTALACIONES PREVIAS
-echo -e "\e[1;93m[*] Limpiando rastros de scripts anteriores y liberando puertos...\e[0m"
-systemctl stop ws_proxy.service badvpn.service stunnel4 dropbear v2ray 2>/dev/null
-systemctl disable ws_proxy.service badvpn.service v2ray 2>/dev/null
-rm -f /etc/systemd/system/ws_proxy.service
-rm -f /etc/systemd/system/badvpn.service
-rm -f /usr/local/bin/ws_proxy.py
-rm -f /usr/local/bin/badvpn-udpgw
-rm -f /etc/russo_installed
-sed -i '/^menu$/d' /root/.bashrc
-
-# Archivo de control para la primera instalación
+# Archivo de control para verificar si ya fue instalado
 INSTALL_CHECK="/etc/russo_installed"
 
+# SOLO SE EJECUTA LA PRIMERA VEZ (INSTALACIÓN Y LIMPIEZA)
 if [ ! -f "$INSTALL_CHECK" ]; then
   clear
   echo -e "\e[1;96m====================================================\e[0m"
   echo -e "\e[1;93m    INSTALANDO AUTOMÁTICAMENTE - RUSSO NETFREE      \e[0m"
   echo -e "\e[1;96m====================================================\e[0m"
-  echo -e "\e[1;97m[*] Actualizando sistema e instalando herramientas...\e[0m"
+  echo -e "\e[1;97m[*] Limpiando procesos previos e instalando herramientas...\e[0m"
   
+  # Detener posibles servicios previos antes de instalar
+  systemctl stop ws_proxy.service badvpn.service stunnel4 dropbear v2ray 2>/dev/null
+
   # Modo 100% no interactivo para instalación limpia
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
   
   apt-get update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef"
-  apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear stunnel4 unzip
+  apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear stunnel4 unzip jq
 
   echo -e "\e[1;97m[*] Aplicando Banner HTML colorido por defecto...\e[0m"
   cat << 'EOF' > /etc/issue.net
@@ -198,9 +191,10 @@ EOF
   systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
   systemctl restart dropbear 2>/dev/null
 
+  # Crear marca de que la instalación se completó
   touch "$INSTALL_CHECK"
   clear
-  echo -e "\e[1;92m[+] ¡Limpieza e instalación completadas con éxito! Abriendo panel...\e[0m"
+  echo -e "\e[1;92m[+] ¡Instalación completada con éxito! Abriendo panel...\e[0m"
   sleep 1
 fi
 
@@ -339,10 +333,45 @@ EOF
   echo -e "${Verde}[+] V2Ray instalado correctamente.${Fin}"
 }
 
+# FUNCIÓN PARA GENERAR EL ENLACE Y LA INFORMACIÓN COMPLETA DE V2RAY
+obtener_informacion_v2ray() {
+  clear
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e "${Amarillo}          INFORMACIÓN DE CUENTA V2RAY              ${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+
+  local ip_publica=$(curl -s http://checkip.amazonaws.com || wget -qO- http://ipecho.net/plain)
+  read -p " Ingresa tu subdominio (o presiona [Enter] para usar IP $ip_publica): " host_v2ray
+  if [ -z "$host_v2ray" ]; then
+    host_v2ray="$ip_publica"
+  fi
+
+  local uuid="b83a38e2-36a3-4631-9a6d-e2511222e3eb"
+  local puerto="8080"
+  local path_ws="/russo"
+
+  echo -e ""
+  echo -e " ${Blanco}1.${Fin}"
+  echo -e " ${Blanco}IP / Host  :${Fin}${Cian}${host_v2ray}${Fin}"
+  echo -e " ${Blanco}Port       :${Fin}${Amarillo}${puerto}${Fin}"
+  echo -e " ${Blanco}TLS        :${Fin} ${Rojo}close${Fin}"
+  echo -e " ${Blanco}UUID       :${Fin}${Blanco}${uuid}${Fin}"
+  echo -e " ${Blanco}Alter ID   :${Fin} ${Blanco}0${Fin}"
+  echo -e " ${Blanco}Network    :${Fin} ${Cian}WebSocket host:${host_v2ray}, path: ${path_ws}${Fin}"
+  echo -e "${Cian}----------------------------------------------------${Fin}"
+
+  local raw_json="{\"v\":\"2\",\"ps\":\"RUSSO_NETFREE_VIP\",\"add\":\"${host_v2ray}\",\"port\":\"${puerto}\",\"id\":\"${uuid}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${host_v2ray}\",\"path\":\"${path_ws}\",\"tls\":\"\"}"
+  local vmess_base64=$(echo -n "$raw_json" | base64 -w 0)
+
+  echo -e " ${Verde}vmess://${vmess_base64}${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+  read -p " Presiona [Enter] para continuar..."
+}
+
 configurar_banner() {
   echo -e ""
   echo -e "${Cian}====================================================${Fin}"
-  echo -e "${Amarillo}             CONFIGURAR BANNER SSH                 ${Fin}"
+  echo -e "${Amarillo}             CONFIGURAR BANNER SSH${Fin}"
   echo -e "${Cian}====================================================${Fin}"
   echo -e " ${Cian}[1]${Fin} ${Blanco}Editar Banner en Nano${Fin}"
   echo -e " ${Cian}[2]${Fin} ${Rojo}Eliminar Banner actual${Fin}"
@@ -441,37 +470,38 @@ while true; do
   echo -e "${Cian}=====================================================================${Fin}"
   
   echo -e " ${Amarillo}ESTADO Y CAPACIDAD DE LA VPS:${Fin}"
-  echo -e "  ${Blanco}• Sistema Operativo  :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
-  echo -e "  ${Blanco}• Uso de CPU         :${Fin} ${Amarillo}$(get_cpu_usage)${Fin}"
-  echo -e "  ${Blanco}• Memoria RAM        :${Fin} ${Cian}$(get_ram_usage)${Fin}"
-  echo -e "  ${Blanco}• Almacenamiento     :${Fin} ${Magenta}$(get_disk_usage)${Fin}"
+  echo -e "  ${Blanco}• Sistema Operativo  :${Fin}${Verde}$(lsb_release -ds 2>/dev/null \vert{}\vert{} cat /etc/os-release \vert{} grep PRETTY_NAME \vert{} cut -d '"' -f2)${Fin}"
+  echo -e "  ${Blanco}• Uso de CPU         :${Fin}${Amarillo}$(get_cpu_usage)${Fin}"
+  echo -e "  ${Blanco}• Memoria RAM        :${Fin}${Cian}$(get_ram_usage)${Fin}"
+  echo -e "  ${Blanco}• Almacenamiento     :${Fin}${Magenta}$(get_disk_usage)${Fin}"
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
   echo -e " ${Amarillo}PUERTOS Y SERVICIOS INSTALADOS:${Fin}"
-  echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin} $(check_port 22)"
-  echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
-  echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
-  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin} $(check_port 10080)"
-  echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin} $(check_port 8080)"
-  echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
-  echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
+  echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin}$(check_port 22)"
+  echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin}$(check_port 110)"
+  echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin}$(check_port 443)"
+  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin}$(check_port 10080)"
+  echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin}$(check_port 8080)"
+  echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin}$(check_port 7300)"
+  echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin}$(check_autostart)"
   echo -e "${Cian}=====================================================================${Fin}"
-  echo -e " ${Blanco}Hora actual :${Fin} ${Amarillo}$(date +%T)${Fin}"
+  echo -e " ${Blanco}Hora actual :${Fin}${Amarillo}$(date +\%T)${Fin}"
   echo -e " ${Blanco}Firma       :${Fin} ${Magenta}RUSSO NETFREE VIP${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
   echo -e " ${Cian}[01]${Fin} ${Blanco}Crear Usuario${Fin}"
-  echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
+  echo -e " ${Cian}[02]${Fin}${Blanco}Cambiar Contraseña${Fin}"
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
   echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
   echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
   echo -e " ${Cian}[08]${Fin} ${Blanco}Instalar / Activar V2Ray en Puerto 8080/80${Fin}"
-  echo -e " ${Cian}[09]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
-  echo -e " ${Cian}[10]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
-  echo -e " ${Cian}[11]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
+  echo -e " ${Cian}[09]${Fin}${Verde}Obtener Enlace VMess / Información V2Ray${Fin}"
+  echo -e " ${Cian}[10]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
+  echo -e " ${Cian}[11]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
+  echo -e " ${Cian}[12]${Fin}${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
-  read -p " Elige una opción [0-11]: " opcion
+  read -p " Elige una opción [0-12]: " opcion
 
   case $opcion in
     1)
@@ -519,42 +549,4 @@ while true; do
       ;;
     5)
       echo -e ""
-      echo -e "${Cian}[*] Reiniciando WebSocket Proxy en puertos 80 y 8080...${Fin}"
-      systemctl restart ws_proxy.service
-      echo -e "${Verde}[+] Servicio WebSocket activo correctamente.${Fin}"
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    6)
-      gestionar_dropbear
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    7)
-      gestionar_stunnel
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    8)
-      gestionar_v2ray
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    9)
-      instalar_badvpn
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    10)
-      configurar_banner
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    11)
-      gestionar_autostart
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    0)
-      echo -e "${Amarillo}Saliendo del panel... ¡Disfruta RUSSO NETFREE VIP!${Fin}"
-      exit 0
-      ;;
-    *)
-      echo -e "${Rojo}Opción no válida.${Fin}"
-      sleep 1
-      ;;
-  esac
-done
+      echo -e
