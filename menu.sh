@@ -1,33 +1,31 @@
 #!/bin/bash
 
-# Verificar que se ejecute como usuario root
+# Verificar acceso Root
 if [ "$EUID" -ne 0 ]; then
   echo -e "\e[1;31m[-] Este script debe ejecutarse como root (sudo -i).\e[0m"
   exit 1
 fi
 
-# Archivo de control para verificar si ya fue instalado
+# Guardar el acceso directo 'menu' en el sistema si no existe
+if [ ! -f /usr/bin/menu ]; then
+  curl -sL https://raw.githubusercontent.com/Russonetfree/netfree-arm/refs/heads/main/menu.sh > /usr/bin/menu
+  chmod +x /usr/bin/menu
+fi
+
 INSTALL_CHECK="/etc/russo_installed"
 
-# SOLO SE EJECUTA LA PRIMERA VEZ (INSTALACIÓN Y LIMPIEZA)
 if [ ! -f "$INSTALL_CHECK" ]; then
   clear
   echo -e "\e[1;96m====================================================\e[0m"
   echo -e "\e[1;93m    INSTALANDO AUTOMÁTICAMENTE - RUSSO NETFREE      \e[0m"
   echo -e "\e[1;96m====================================================\e[0m"
-  echo -e "\e[1;97m[*] Limpiando procesos previos e instalando herramientas...\e[0m"
   
-  # Detener posibles servicios previos antes de instalar
-  systemctl stop ws_proxy.service badvpn.service stunnel4 dropbear v2ray 2>/dev/null
-
-  # Modo 100% no interactivo para instalación limpia
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
   
   apt-get update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef"
   apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear stunnel4 unzip jq
 
-  echo -e "\e[1;97m[*] Aplicando Banner HTML colorido por defecto...\e[0m"
   cat << 'EOF' > /etc/issue.net
 <h3 style="text-align:center;">
   <font color="#FF0000">RUSSONET VPN</font> &#127916; <font color="#FF7F50">Youtube</font><br>
@@ -36,7 +34,6 @@ if [ ! -f "$INSTALL_CHECK" ]; then
 </h3>
 EOF
 
-  echo -e "\e[1;97m[*] Configurando Dropbear en puertos 110 y 90...\e[0m"
   cat << 'EOF' > /etc/default/dropbear
 NO_START=0
 DROPBEAR_PORT=110
@@ -47,7 +44,6 @@ EOF
   systemctl enable dropbear >/dev/null 2>&1
   systemctl restart dropbear
 
-  echo -e "\e[1;97m[*] Configurando Stunnel4 (SSL Puerto 443)...\e[0m"
   openssl req -new -x509 -days 3650 -nodes -out /etc/stunnel/stunnel.pem -keyout /etc/stunnel/stunnel.pem -subj "/CN=RussoNet/O=RussoNet/C=DO" 2>/dev/null
 
   cat << 'EOF' > /etc/stunnel/stunnel.conf
@@ -66,7 +62,6 @@ EOF
   systemctl enable stunnel4 >/dev/null 2>&1
   systemctl restart stunnel4
 
-  echo -e "\e[1;97m[*] Configurando reglas de red y liberando firewall...\e[0m"
   iptables -F
   iptables -X
   iptables -t nat -F
@@ -76,7 +71,6 @@ EOF
   iptables -P OUTPUT ACCEPT
   iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
 
-  echo -e "\e[1;97m[*] Configurando e iniciando WebSocket Proxy (Puertos 80 y 8080)...\e[0m"
   cat << 'EOF' > /usr/local/bin/ws_proxy.py
 import socket, select, threading
 
@@ -153,7 +147,6 @@ EOF
   systemctl enable ws_proxy.service >/dev/null 2>&1
   systemctl restart ws_proxy.service
 
-  echo -e "\e[1;97m[*] Compilando e instalando BadVPN (UDPGW)...\e[0m"
   cd /tmp
   rm -rf badvpn
   git clone https://github.com/ambrop72/badvpn.git
@@ -191,14 +184,13 @@ EOF
   systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
   systemctl restart dropbear 2>/dev/null
 
-  # Crear marca de que la instalación se completó
   touch "$INSTALL_CHECK"
   clear
   echo -e "\e[1;92m[+] ¡Instalación completada con éxito! Abriendo panel...\e[0m"
   sleep 1
 fi
 
-# Colores brillantes ANSI
+# Colores ANSI
 Rojo="\e[1;91m"
 Verde="\e[1;92m"
 Amarillo="\e[1;93m"
@@ -208,7 +200,6 @@ Cian="\e[1;96m"
 Blanco="\e[1;97m"
 Fin="\e[0m"
 
-# Funciones de estado y recursos
 check_port() {
   local port=$1
   if netstat -tuln 2>/dev/null | grep -q ":$port " || lsof -i :$port >/dev/null 2>&1; then
@@ -333,7 +324,6 @@ EOF
   echo -e "${Verde}[+] V2Ray instalado correctamente.${Fin}"
 }
 
-# FUNCIÓN PARA GENERAR EL ENLACE Y LA INFORMACIÓN COMPLETA DE V2RAY
 obtener_informacion_v2ray() {
   clear
   echo -e "${Cian}====================================================${Fin}"
@@ -352,12 +342,12 @@ obtener_informacion_v2ray() {
 
   echo -e ""
   echo -e " ${Blanco}1.${Fin}"
-  echo -e " ${Blanco}IP / Host  :${Fin}${Cian}${host_v2ray}${Fin}"
-  echo -e " ${Blanco}Port       :${Fin}${Amarillo}${puerto}${Fin}"
+  echo -e " ${Blanco}IP / Host  :${Fin} ${Cian}${host_v2ray}${Fin}"
+  echo -e " ${Blanco}Port       :${Fin} ${Amarillo}${puerto}${Fin}"
   echo -e " ${Blanco}TLS        :${Fin} ${Rojo}close${Fin}"
-  echo -e " ${Blanco}UUID       :${Fin}${Blanco}${uuid}${Fin}"
+  echo -e " ${Blanco}UUID       :${Fin} ${Blanco}${uuid}${Fin}"
   echo -e " ${Blanco}Alter ID   :${Fin} ${Blanco}0${Fin}"
-  echo -e " ${Blanco}Network    :${Fin} ${Cian}WebSocket host:${host_v2ray}, path: ${path_ws}${Fin}"
+  echo -e " ${Blanco}Network    :${Fin} ${Cian}WebSocket host: ${host_v2ray}, path: ${path_ws}${Fin}"
   echo -e "${Cian}----------------------------------------------------${Fin}"
 
   local raw_json="{\"v\":\"2\",\"ps\":\"RUSSO_NETFREE_VIP\",\"add\":\"${host_v2ray}\",\"port\":\"${puerto}\",\"id\":\"${uuid}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${host_v2ray}\",\"path\":\"${path_ws}\",\"tls\":\"\"}"
@@ -371,7 +361,7 @@ obtener_informacion_v2ray() {
 configurar_banner() {
   echo -e ""
   echo -e "${Cian}====================================================${Fin}"
-  echo -e "${Amarillo}             CONFIGURAR BANNER SSH${Fin}"
+  echo -e "${Amarillo}             CONFIGURAR BANNER SSH                 ${Fin}"
   echo -e "${Cian}====================================================${Fin}"
   echo -e " ${Cian}[1]${Fin} ${Blanco}Editar Banner en Nano${Fin}"
   echo -e " ${Cian}[2]${Fin} ${Rojo}Eliminar Banner actual${Fin}"
@@ -470,35 +460,35 @@ while true; do
   echo -e "${Cian}=====================================================================${Fin}"
   
   echo -e " ${Amarillo}ESTADO Y CAPACIDAD DE LA VPS:${Fin}"
-  echo -e "  ${Blanco}• Sistema Operativo  :${Fin}${Verde}$(lsb_release -ds 2>/dev/null \vert{}\vert{} cat /etc/os-release \vert{} grep PRETTY_NAME \vert{} cut -d '"' -f2)${Fin}"
-  echo -e "  ${Blanco}• Uso de CPU         :${Fin}${Amarillo}$(get_cpu_usage)${Fin}"
-  echo -e "  ${Blanco}• Memoria RAM        :${Fin}${Cian}$(get_ram_usage)${Fin}"
-  echo -e "  ${Blanco}• Almacenamiento     :${Fin}${Magenta}$(get_disk_usage)${Fin}"
+  echo -e "  ${Blanco}• Sistema Operativo  :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
+  echo -e "  ${Blanco}• Uso de CPU         :${Fin} ${Amarillo}$(get_cpu_usage)${Fin}"
+  echo -e "  ${Blanco}• Memoria RAM        :${Fin} ${Cian}$(get_ram_usage)${Fin}"
+  echo -e "  ${Blanco}• Almacenamiento     :${Fin} ${Magenta}$(get_disk_usage)${Fin}"
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
   echo -e " ${Amarillo}PUERTOS Y SERVICIOS INSTALADOS:${Fin}"
-  echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin}$(check_port 22)"
-  echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin}$(check_port 110)"
-  echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin}$(check_port 443)"
-  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin}$(check_port 10080)"
-  echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin}$(check_port 8080)"
-  echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin}$(check_port 7300)"
-  echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin}$(check_autostart)"
+  echo -e "  ${Blanco}• OpenSSH (Puerto 22)       :${Fin} $(check_port 22)"
+  echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
+  echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
+  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin} $(check_port 10080)"
+  echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin} $(check_port 8080)"
+  echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
+  echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
   echo -e "${Cian}=====================================================================${Fin}"
-  echo -e " ${Blanco}Hora actual :${Fin}${Amarillo}$(date +\%T)${Fin}"
+  echo -e " ${Blanco}Hora actual :${Fin} ${Amarillo}$(date +%T)${Fin}"
   echo -e " ${Blanco}Firma       :${Fin} ${Magenta}RUSSO NETFREE VIP${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
   echo -e " ${Cian}[01]${Fin} ${Blanco}Crear Usuario${Fin}"
-  echo -e " ${Cian}[02]${Fin}${Blanco}Cambiar Contraseña${Fin}"
+  echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
   echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
   echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
   echo -e " ${Cian}[08]${Fin} ${Blanco}Instalar / Activar V2Ray en Puerto 8080/80${Fin}"
-  echo -e " ${Cian}[09]${Fin}${Verde}Obtener Enlace VMess / Información V2Ray${Fin}"
+  echo -e " ${Cian}[09]${Fin} ${Verde}Obtener Enlace VMess / Información V2Ray${Fin}"
   echo -e " ${Cian}[10]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
   echo -e " ${Cian}[11]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
-  echo -e " ${Cian}[12]${Fin}${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
+  echo -e " ${Cian}[12]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
   echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
   read -p " Elige una opción [0-12]: " opcion
@@ -549,4 +539,45 @@ while true; do
       ;;
     5)
       echo -e ""
-      echo -e
+      echo -e "${Cian}[*] Reiniciando WebSocket Proxy en puertos 80 y 8080...${Fin}"
+      systemctl restart ws_proxy.service
+      echo -e "${Verde}[+] Servicio WebSocket activo correctamente.${Fin}"
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    6)
+      gestionar_dropbear
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    7)
+      gestionar_stunnel
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    8)
+      gestionar_v2ray
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    9)
+      obtener_informacion_v2ray
+      ;;
+    10)
+      instalar_badvpn
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    11)
+      configurar_banner
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    12)
+      gestionar_autostart
+      read -p " Presiona [Enter] para continuar..."
+      ;;
+    0)
+      echo -e "${Amarillo}Saliendo del panel... ¡Disfruta RUSSO NETFREE VIP!${Fin}"
+      exit 0
+      ;;
+    *)
+      echo -e "${Rojo}Opción no válida.${Fin}"
+      sleep 1
+      ;;
+  esac
+done
