@@ -26,37 +26,51 @@ if echo "$RESPONSE" | grep -q '"status":"ok"'; then
     sleep 2
 
     # =========================================================
-    # INSTALACIÓN Y CONFIGURACIÓN AUTOMÁTICA DEL PANEL
+    # INSTALACIÓN AUTOMÁTICA Y CREACIÓN DEL MENÚ INTERACTIVO
     # =========================================================
-    echo -e "\n\033[1;36m📥 Descargando e instalando herramientas en el sistema...\033[0m"
-
-    # Directorio base de ejecutables
     BIN_DIR="/usr/local/bin"
     REPO_URL="https://raw.githubusercontent.com/Russonetfree/netfree-arm/main"
-
-    # Lista de archivos que forman tu panel (descarga los módulos directamente)
-    wget -qO $BIN_DIR/menu $REPO_URL/menu.sh
-    wget -qO $BIN_DIR/crearusuario $REPO_URL/crearusuario.sh 2>/dev/null
-    wget -qO $BIN_DIR/removerusuario $REPO_URL/removerusuario.sh 2>/dev/null
-    wget -qO $BIN_DIR/online $REPO_URL/online.sh 2>/dev/null
-
-    # Otorgar permisos de ejecución a todos los archivos descargados
-    chmod +x $BIN_DIR/* 2>/dev/null
 
     # Guardar registro de activación
     mkdir -p /etc/netfree
     echo "$USER_KEY" > /etc/netfree/license.key
 
-    echo -e "\n\033[1;32m🚀 ¡Instalación completada exitosamente!\033[0m"
-    echo -e "\033[1;33mPuedes abrir este menú en cualquier momento escribiendo: \033[1;36mmenu\033[0m"
-    sleep 3
+    # Descargar módulos si existen en el repositorio
+    wget -qO $BIN_DIR/crearusuario $REPO_URL/crearusuario.sh 2>/dev/null
+    wget -qO $BIN_DIR/removerusuario $REPO_URL/removerusuario.sh 2>/dev/null
+    wget -qO $BIN_DIR/online $REPO_URL/online.sh 2>/dev/null
 
-    # Iniciar la interfaz principal (si existe un script secundario de panel, o reiniciar bash)
-    if [ -f "$BIN_DIR/menu_panel" ]; then
-        bash $BIN_DIR/menu_panel
-    else
-        echo -e "\n\033[1;32mAcceso concedido. Sistema listo para operar.\033[0m"
-    fi
+    # Crear el menú principal interactivo del cliente
+    cat << 'EOF' > $BIN_DIR/panel_menu.sh
+#!/bin/bash
+clear
+echo -e "\033[1;33m==========================================\033[0m"
+echo -e "\033[1;36m       PANEL DE CONTROL RUSSO VIP         \033[0m"
+echo -e "\033[1;33m==========================================\033[0m"
+echo -e "1) Crear Usuario SSH"
+echo -e "2) Eliminar Usuario SSH"
+echo -e "3) Ver Usuarios Online"
+echo -e "0) Salir"
+echo -e "\033[1;33m==========================================\033[0m"
+read -p "Seleccione una opción: " OPCION
+
+case $OPCION in
+    1) crearusuario 2>/dev/null || echo "Opción en desarrollo" ;;
+    2) removerusuario 2>/dev/null || echo "Opción en desarrollo" ;;
+    3) online 2>/dev/null || echo "Opción en desarrollo" ;;
+    0) exit 0 ;;
+    *) echo "Opción inválida" ;;
+esac
+EOF
+
+    chmod +x $BIN_DIR/* 2>/dev/null
+
+    echo -e "\n\033[1;32m🚀 ¡Instalación completada exitosamente!\033[0m"
+    echo -e "\033[1;33mAbriendo panel de control...\033[0m"
+    sleep 2
+
+    # Iniciar el panel interactivo directamente
+    bash $BIN_DIR/panel_menu.sh
 
 else
     echo -e "\n\033[1;31m❌ Licencia inválida, expirada o ya utilizada.\033[0m"
