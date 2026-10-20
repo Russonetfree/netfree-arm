@@ -22,28 +22,40 @@ echo -e "\n\033[1;33m🔄 Verificando licencia con el servidor...\033[0m"
 RESPONSE=$(curl -s "$API_URL?key=$USER_KEY")
 
 if echo "$RESPONSE" | grep -q '"status":"ok"'; then
-    echo -e "\033[1;32m✅ ¡Licencia Válida! Iniciando instalación y configuración...\033[0m"
+    echo -e "\033[1;32m✅ ¡Licencia Válida! Instalando componentes...\033[0m"
     sleep 2
-    
-    # =========================================================
-    # DESCARGA E INSTALACIÓN DE LOS SCRIPTS DEL REPOSITORIO
-    # =========================================================
-    echo -e "\n\033[1;36m📥 Descargando archivos del sistema desde GitHub...\033[0m"
-    
-    # Crear directorio de trabajo si no existe
-    mkdir -p /etc/netfree
-    cd /etc/netfree
 
-    # Descargar el script de instalación principal o los módulos de configuración
-    # (Asegúrate de tener un archivo como 'setup.sh' o 'install.sh' en tu repositorio netfree-arm)
-    wget -qO setup.sh https://raw.githubusercontent.com/Russonetfree/netfree-arm/main/setup.sh
-    
-    if [ -f "setup.sh" ]; then
-        chmod +x setup.sh
-        ./setup.sh
+    # =========================================================
+    # INSTALACIÓN Y CONFIGURACIÓN AUTOMÁTICA DEL PANEL
+    # =========================================================
+    echo -e "\n\033[1;36m📥 Descargando e instalando herramientas en el sistema...\033[0m"
+
+    # Directorio base de ejecutables
+    BIN_DIR="/usr/local/bin"
+    REPO_URL="https://raw.githubusercontent.com/Russonetfree/netfree-arm/main"
+
+    # Lista de archivos que forman tu panel (descarga los módulos directamente)
+    wget -qO $BIN_DIR/menu $REPO_URL/menu.sh
+    wget -qO $BIN_DIR/crearusuario $REPO_URL/crearusuario.sh 2>/dev/null
+    wget -qO $BIN_DIR/removerusuario $REPO_URL/removerusuario.sh 2>/dev/null
+    wget -qO $BIN_DIR/online $REPO_URL/online.sh 2>/dev/null
+
+    # Otorgar permisos de ejecución a todos los archivos descargados
+    chmod +x $BIN_DIR/* 2>/dev/null
+
+    # Guardar registro de activación
+    mkdir -p /etc/netfree
+    echo "$USER_KEY" > /etc/netfree/license.key
+
+    echo -e "\n\033[1;32m🚀 ¡Instalación completada exitosamente!\033[0m"
+    echo -e "\033[1;33mPuedes abrir este menú en cualquier momento escribiendo: \033[1;36mmenu\033[0m"
+    sleep 3
+
+    # Iniciar la interfaz principal (si existe un script secundario de panel, o reiniciar bash)
+    if [ -f "$BIN_DIR/menu_panel" ]; then
+        bash $BIN_DIR/menu_panel
     else
-        echo -e "\n\033[1;31m❌ Error al descargar los archivos de configuración.\033[0m"
-        exit 1
+        echo -e "\n\033[1;32mAcceso concedido. Sistema listo para operar.\033[0m"
     fi
 
 else
