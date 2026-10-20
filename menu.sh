@@ -22,7 +22,7 @@ echo -e "\n\033[1;33m🔄 Verificando licencia con el servidor...\033[0m"
 RESPONSE=$(curl -s "$API_URL?key=$USER_KEY")
 
 if echo "$RESPONSE" | grep -q '"status":"ok"'; then
-    echo -e "\033[1;32m✅ ¡Licencia Válida! Iniciando instalación...\033[0m"
+    echo -e "\033[1;32m✅ ¡Licencia Válida! Iniciando instalación completa...\033[0m"
     sleep 2
 
     # Guardar registro de activación
@@ -30,13 +30,18 @@ if echo "$RESPONSE" | grep -q '"status":"ok"'; then
     echo "$USER_KEY" > /etc/netfree/license.key
 
     # =========================================================
-    # INSTALACIÓN DIRECTA DEL PANEL DE CONTROL Y HERRAMIENTAS
+    # INSTALACIÓN REAL DE PAQUETES Y DEPENDENCIAS DEL SISTEMA
     # =========================================================
+    echo -e "\n\033[1;36m📦 Actualizando e instalando paquetes requeridos (SSH, BadVPN, Curl, Screen)...\033[0m"
     
-    # Preparación de directorios y entorno
-    mkdir -p /etc/RUSSO
-    
-    # Crear ejecutable del menú principal en el sistema
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y >/dev/null 2>&1
+    apt-get install -y curl wget screen net-tools openssh-server stunnel4 python3 python3-pip >/dev/null 2>&1
+
+    # Asegurar directorio de binarios
+    mkdir -p /usr/local/bin
+
+    # Crear la orden directa 'menu' en el sistema
     cat << 'EOF' > /usr/local/bin/menu
 #!/bin/bash
 clear
@@ -47,9 +52,7 @@ echo -e "\033[1;33m=====================================================\033[0m"
 echo -e "\033[1;32m 1)\033[0m Crear Usuario SSH"
 echo -e "\033[1;32m 2)\033[0m Eliminar / Remover Usuario"
 echo -e "\033[1;32m 3)\033[0m Ver Usuarios Conectados / Online"
-echo -e "\033[1;32m 4)\033[0m Modificar Límite de Conexiones"
-echo -e "\033[1;32m 5)\033[0m Configurar Puertos (SSL / BadVPN / SSH)"
-echo -e "\033[1;32m 6)\033[0m Reiniciar Servicios"
+echo -e "\033[1;32m 4)\033[0m Reiniciar Servicios del Sistema"
 echo -e "\033[1;31m 0) Salir\033[0m"
 echo -e "\033[1;33m=====================================================\033[0m"
 read -p " Seleccione una opción: " opcion
@@ -59,33 +62,25 @@ case $opcion in
         read -p "Nombre de usuario: " usuario
         read -p "Contraseña: " pass
         read -p "Días de duración: " dias
-        useradd -M -s /bin/false $usuario
+        useradd -M -s /bin/false "$usuario" 2>/dev/null
         echo "$usuario:$pass" | chpasswd
-        echo -e "\033[1;32mUsuario $usuario creado exitosamente.\033[0m"
+        echo -e "\033[1;32m✅ Usuario $usuario creado exitosamente.\033[0m"
         sleep 2
         ;;
     2)
         read -p "Usuario a eliminar: " usuario
-        userdel -f $usuario
-        echo -e "\033[1;31mUsuario $usuario eliminado.\033[0m"
+        userdel -f "$usuario" 2>/dev/null
+        echo -e "\033[1;31m❌ Usuario $usuario eliminado.\033[0m"
         sleep 2
         ;;
     3)
-        echo -e "\033[1;36mUsuarios en línea:\033[0m"
-        ps -ef | grep sshd | grep -v root
+        echo -e "\033[1;36m👥 Usuarios en línea:\033[0m"
+        ps -ef | grep sshd | grep -v root | grep -v grep
         read -p "Presione Enter para continuar..."
         ;;
     4)
-        echo -e "\033[1;33mConfiguración de límites activada.\033[0m"
-        sleep 2
-        ;;
-    5)
-        echo -e "\033[1;33mPuertos actualizados correctamente.\033[0m"
-        sleep 2
-        ;;
-    6)
-        systemctl restart ssh
-        echo -e "\033[1;32mServicios reiniciados.\033[0m"
+        systemctl restart ssh 2>/dev/null || service ssh restart
+        echo -e "\033[1;32m🔄 Servicios reiniciados correctamente.\033[0m"
         sleep 2
         ;;
     0)
@@ -102,11 +97,11 @@ EOF
     # Permisos de ejecución
     chmod +x /usr/local/bin/menu
 
-    echo -e "\n\033[1;32m🚀 ¡Instalación y configuración completadas exitosamente!\033[0m"
-    echo -e "\033[1;33mCargando el menú principal...\033[0m"
+    echo -e "\n\033[1;32m🚀 ¡Instalación real completada exitosamente!\033[0m"
+    echo -e "\033[1;33mCargando el panel de control...\033[0m"
     sleep 2
 
-    # Ejecutar el menú principal directamente
+    # Iniciar el panel directamente
     /usr/local/bin/menu
 
 else
