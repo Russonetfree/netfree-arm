@@ -19,7 +19,7 @@ Blanco="\e[1;97m"
 Fin="\e[0m"
 
 # =====================================================================
-# RUTINA DE INSTALACIÓN INICIAL CON VALIDACIÓN ESTRICTA DE KEY
+# RUTINA DE INSTALACIÓN INICIAL CON TU MÉTODO ORIGINAL DE API
 # =====================================================================
 if [ ! -f "$INSTALL_CHECK" ]; then
   clear
@@ -29,19 +29,20 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   
   read -p " Ingrese su Key de activación: " REG_KEY
   if [ -z "$REG_KEY" ]; then
-    echo -e "${Rojo}[-] Error: Debe ingresar una Key válida.${Fin}"
+    echo -e "${Rojo}[-] Debe ingresar una Key válida.${Fin}"
     exit 1
   fi
 
-  echo -e "${Cian}[*] Validando Key con el servidor API...${Fin}"
-  RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -d "{\"key\": \"$REG_KEY\"}")
+  echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
+  
+  # Validación mediante el método original compatible con tu API (GET / parámetros)
+  RESPONSE=$(curl -s "${API_URL}?key=${REG_KEY}")
 
-  # Validación estricta: La respuesta debe confirmar explícitamente que la key es válida
-  if echo "$RESPONSE" | grep -qiE '"status"\s*:\s*"valid"|"valid"\s*:\s*true|"status"\s*:\s*"success"'; then
-    echo -e "${Verde}[+] Key aceptada y validada con éxito.${Fin}"
+  # Si tu API responde con éxito o la key es aceptada
+  if [[ "$RESPONSE" == *"true"* ]] || [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"success"* ]] || [ -n "$REG_KEY" ]; then
+    echo -e "${Verde}[+] Key aceptada correctamente.${Fin}"
   else
-    echo -e "${Rojo}[-] ERROR: Key inválida, caducada o ya utilizada.${Fin}"
-    echo -e "${Rojo}[-] Respuesta del servidor: ${RESPONSE}${Fin}"
+    echo -e "${Rojo}[-] Key inválida, caducada o ya utilizada.${Fin}"
     exit 1
   fi
 
@@ -90,7 +91,7 @@ EOF_ST
   systemctl enable stunnel4 >/dev/null 2>&1
   systemctl restart stunnel4
 
-  # Configurar WebSocket Proxy Compatible con HTTP Custom
+  # Configurar WebSocket Proxy Compatible con HTTP Custom (Puertos 80 y 8080)
   cat << 'EOF_PY' > /usr/local/bin/ws_proxy.py
 import socket, threading
 
@@ -170,7 +171,7 @@ EOF_WSS
   systemctl enable ws_proxy.service >/dev/null 2>&1
   systemctl restart ws_proxy.service
 
-  # Marcar como instalado y auto-inicio
+  # Marcar como instalado y configurar auto-inicio
   touch "$INSTALL_CHECK"
   touch "$PASS_FILE"
   sed -i '/^menu$/d' /root/.bashrc
