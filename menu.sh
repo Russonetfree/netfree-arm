@@ -367,12 +367,12 @@ obtener_informacion_v2ray() {
 
   echo -e ""
   echo -e " ${Blanco}1.${Fin}"
-  echo -e " ${Blanco}IP / Host  :${Fin} ${Cian}${host_v2ray}${Fin}"
-  echo -e " ${Blanco}Port        :${Fin} ${Amarillo}${puerto}${Fin}"
+  echo -e " ${Blanco}IP / Host  :${Fin}${Cian}${host_v2ray}${Fin}"
+  echo -e " ${Blanco}Port        :${Fin}${Amarillo}${puerto}${Fin}"
   echo -e " ${Blanco}TLS         :${Fin} ${Rojo}close${Fin}"
-  echo -e " ${Blanco}UUID        :${Fin} ${Blanco}${uuid}${Fin}"
+  echo -e " ${Blanco}UUID        :${Fin}${Blanco}${uuid}${Fin}"
   echo -e " ${Blanco}Alter ID    :${Fin} ${Blanco}0${Fin}"
-  echo -e " ${Blanco}Network     :${Fin} ${Cian}WebSocket host: ${host_v2ray}, path: ${path_ws}${Fin}"
+  echo -e " ${Blanco}Network     :${Fin} ${Cian}WebSocket host:${host_v2ray}, path: ${path_ws}${Fin}"
   echo -e "${Cian}----------------------------------------------------${Fin}"
 
   local raw_json="{\"v\":\"2\",\"ps\":\"RUSSO_NETFREE_VIP\",\"add\":\"${host_v2ray}\",\"port\":\"${puerto}\",\"id\":\"${uuid}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${host_v2ray}\",\"path\":\"${path_ws}\",\"tls\":\"\"}"
@@ -386,7 +386,7 @@ obtener_informacion_v2ray() {
 configurar_banner() {
   echo -e ""
   echo -e "${Cian}====================================================${Fin}"
-  echo -e "${Amarillo}             CONFIGURAR BANNER SSH                  ${Fin}"
+  echo -e "${Amarillo}             CONFIGURAR BANNER SSH${Fin}"
   echo -e "${Cian}====================================================${Fin}"
   echo -e " ${Cian}[1]${Fin} ${Blanco}Editar Banner en Nano${Fin}"
   echo -e " ${Cian}[2]${Fin} ${Rojo}Eliminar Banner actual${Fin}"
@@ -477,7 +477,7 @@ EOF
 listar_usuarios_estado() {
   clear
   echo -e "${Cian}=====================================================================${Fin}"
-  echo -e "${Amarillo}                MOSTRAR USUARIOS REGISTRADOS                         ${Fin}"
+  echo -e "${Amarillo}                MOSTRAR USUARIOS REGISTRADOS${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
   echo -e " ${Blanco}USUARIO            CONTRASEÑA         ESTADO         CONEXIONES${Fin}"
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
@@ -496,19 +496,12 @@ listar_usuarios_estado() {
         fi
       fi
 
-      # Detección real basada en conexiones TCP establecidas asociadas a las sesiones de red de los puertos 110, 90 o 22
+      # Detección automática pura y limpia basada en sesiones activas de usuario
       local total_con=0
-      
-      # Comprobar si hay conexiones activas en el sistema para este usuario específico
-      # Dropbear registra las conexiones activas en las conexiones establecidas hacia el puerto local
-      local active_dropbear=$(netstat -tnpa 2>/dev/null | grep ESTABLISHED | grep -E "110|90|22" | wc -l)
-      
-      # Validar si el usuario tiene un proceso activo real ejecutándose o una sesión establecida en Dropbear/SSH
-      if [ "$active_dropbear" -gt 0 ]; then
-        # Verificamos mediante log o sesión activa de red si coincide con el usuario conectado
-        if who | grep -w "$u" &>/dev/null || pgrep -u "$u" &>/dev/null; then
-          total_con=1
-        fi
+      if who | grep -w "$u" &>/dev/null; then
+        total_con=$(who | grep -w "$u" | wc -l)
+      elif ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|bash|sh" &>/dev/null; then
+        total_con=$(ps -u "$u" --no-headers 2>/dev/null | wc -l)
       fi
 
       if [ "$total_con" -gt 0 ]; then
@@ -534,131 +527,26 @@ while true; do
   echo -e "${Cian}=====================================================================\e[0m"
 
   echo -e " ${Amarillo}ESTADO Y CAPACIDAD DE LA VPS:${Fin}"
-  echo -e "  ${Blanco}• Sistema Operativo  :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
-  echo -e "  ${Blanco}• Uso de CPU         :${Fin} ${Amarillo}$(get_cpu_usage)${Fin}"
-  echo -e "  ${Blanco}• Memoria RAM        :${Fin} ${Cian}$(get_ram_usage)${Fin}"
-  echo -e "  ${Blanco}• Almacenamiento     :${Fin} ${Magenta}$(get_disk_usage)${Fin}"
+  echo -e "  ${Blanco}• Sistema Operativo  :${Fin}${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
+  echo -e "  ${Blanco}• Uso de CPU         :${Fin}${Amarillo}$(get_cpu_usage)${Fin}"
+  echo -e "  ${Blanco}• Memoria RAM        :${Fin}${Cian}$(get_ram_usage)${Fin}"
+  echo -e "  ${Blanco}• Almacenamiento     :${Fin}${Magenta}$(get_disk_usage)${Fin}"
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
   echo -e " ${Amarillo}PUERTOS Y SERVICIOS INSTALADOS:${Fin}"
-  echo -e "  ${Blanco}• OpenSSH (Puerto 22)        :${Fin} $(check_port 22)"
-  echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
-  echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
-  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin} $(check_port 10080)"
-  echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin} $(check_port 8080)"
-  echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
-  echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
+  echo -e "  ${Blanco}• OpenSSH (Puerto 22)        :${Fin}$(check_port 22)"
+  echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin}$(check_port 110)"
+  echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin}$(check_port 443)"
+  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin}$(check_port 10080)"
+  echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin}$(check_port 8080)"
+  echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin}$(check_port 7300)"
+  echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin}$(check_autostart)"
   echo -e "${Cian}=====================================================================\e[0m"
-  echo -e " ${Blanco}Hora actual :${Fin} ${Amarillo}$(date +%T)${Fin}"
+  echo -e " ${Blanco}Hora actual :${Fin}${Amarillo}$(date +%T)${Fin}"
   echo -e " ${Blanco}Firma       :${Fin} ${Magenta}RUSSO NETFREE VIP${Fin}"
   echo -e "${Cian}=====================================================================\e[0m"
   echo -e " ${Cian}[01]${Fin} ${Blanco}Crear Usuario${Fin}"
-  echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
+  echo -e " ${Cian}[02]${Fin}${Blanco}Cambiar Contraseña${Fin}"
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
-  echo -e " ${Cian}[04]${Fin} ${Verde}Mostrar Usuarios Registrados (Usuario / Contraseña / Estado)${Fin}"
+  echo -e " ${Cian}[04]${Fin}${Verde}Mostrar Usuarios Registrados (Usuario / Contraseña / Estado)${Fin}"
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
-  echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
-  echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
-  echo -e " ${Cian}[08]${Fin} ${Blanco}Instalar / Activar V2Ray en Puerto 8080/80${Fin}"
-  echo -e " ${Cian}[09]${Fin} ${Verde}Obtener Enlace VMess / Información V2Ray${Fin}"
-  echo -e " ${Cian}[10]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
-  echo -e " ${Cian}[11]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
-  echo -e " ${Cian}[12]${Fin} ${Blanco}Activar / Desactivar Auto-inicio del Menú${Fin}"
-  echo -e " ${Cian}[00]${Fin} ${Rojo}Salir${Fin}"
-  echo -e "${Cian}=====================================================================\e[0m"
-  read -p " Elige una opción [0-12]: " opcion
-
-  case $opcion in
-    1)
-      echo -e ""
-      read -p " Nombre del nuevo usuario: " nuevo_user
-      if id "$nuevo_user" &>/dev/null; then
-        echo -e "${Rojo}[-] El usuario '$nuevo_user' ya existe.${Fin}"
-      else
-        read -s -p " Contraseña para $nuevo_user: " nuevo_pass
-        echo -e ""
-        useradd -m -s /bin/bash "$nuevo_user"
-        echo "$nuevo_user:$nuevo_pass" | chpasswd
-        
-        touch "$PASS_FILE"
-        sed -i "/^$nuevo_user:/d" "$PASS_FILE" 2>/dev/null
-        echo "$nuevo_user:$nuevo_pass" >> "$PASS_FILE"
-
-        echo -e "${Verde}[+] Usuario '$nuevo_user' creado con éxito.${Fin}"
-      fi
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    2)
-      read -p " Usuario al que deseas cambiar la contraseña: " mod_user
-      if id "$mod_user" &>/dev/null; then
-        read -s -p " Nueva contraseña para $mod_user: " nueva_pass
-        echo -e ""
-        echo "$mod_user:$nueva_pass" | chpasswd
-        
-        touch "$PASS_FILE"
-        sed -i "/^$mod_user:/d" "$PASS_FILE"
-        echo "$mod_user:$nueva_pass" >> "$PASS_FILE"
-
-        echo -e "${Verde}[+] Contraseña de '$mod_user' actualizada correctamente.${Fin}"
-      else
-        echo -e "${Rojo}[-] El usuario no existe.${Fin}"
-      fi
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    3)
-      read -p " Usuario a eliminar: " del_user
-      if id "$del_user" &>/dev/null; then
-        userdel -r "$del_user"
-        sed -i "/^$del_user:/d" "$PASS_FILE" 2>/dev/null
-        echo -e "${Verde}[+] Usuario '$del_user' eliminado correctamente.${Fin}"
-      else
-        echo -e "${Rojo}[-] El usuario no existe.${Fin}"
-      fi
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    4)
-      listar_usuarios_estado
-      ;;
-    5)
-      echo -e ""
-      echo -e "${Cian}[*] Reiniciando WebSocket Proxy en puertos 80 y 8080...${Fin}"
-      systemctl restart ws_proxy.service
-      echo -e "${Verde}[+] WebSocket activo correctamente.${Fin}"
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    6)
-      gestionar_dropbear
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    7)
-      gestionar_stunnel
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    8)
-      gestionar_v2ray
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    9)
-      obtener_informacion_v2ray
-      ;;
-    10)
-      instalar_badvpn
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    11)
-      configurar_banner
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    12)
-      gestionar_autostart
-      read -p " Presiona [Enter] para continuar..."
-      ;;
-    0)
-      echo -e "${Amarillo}Saliendo del panel... ¡Disfruta RUSSO NETFREE VIP!${Fin}"
-      exit 0
-      ;;
-    *)
-      echo -e "${Rojo}Opción no válida.${Fin}"
-      sleep 1
-      ;;
-  esac
-done
+  echo -e " ${Cian}[06]${Fin}${Blanco}Instalar
