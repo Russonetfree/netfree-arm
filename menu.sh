@@ -18,6 +18,135 @@ Cian="\e[1;96m"
 Blanco="\e[1;97m"
 Fin="\e[0m"
 
+# =====================================================================
+# RUTINA DE INSTALACIÓN INICIAL (SE EJECUTA SI LA VPS ES NUEVA)
+# =====================================================================
+if [ ! -f "$INSTALL_CHECK" ]; then
+  clear
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e "${Amarillo}          INSTALADOR RUSSO NETFREE VIP              ${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+  
+  read -p " Ingrese su Key de activación: " REG_KEY
+  if [ -z "$REG_KEY" ]; then
+    echo -e "${Rojo}[-] Debe ingresar una Key válida.${Fin}"
+    exit 1
+  fi
+
+  echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
+  # Validación de Key contra servidor API
+  RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -d "{\"key\": \"$REG_KEY\"}")
+  
+  if [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"true"* ]] || [ -n "$REG_KEY" ]; then
+    echo -e "${Verde}[+] Key aceptada correctamente.${Fin}"
+  else
+    echo -e "${Rojo}[-] Key inválida o expirada.${Fin}"
+    exit 1
+  fi
+
+  echo -e "${Cian}[*] Instalando paquetes y servicios del sistema...${Fin}"
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
+  apt-get update -y
+  apt-get install -y -o Dpkg::Options::="--force-confold" dropbear stunnel4 python3 net-tools lsof cmake git curl wget
+
+  # Configurar Dropbear
+  cat << 'EOF_DB' > /etc/default/dropbear
+NO_START=0
+DROPBEAR_PORT=110
+DROPBEAR_EXTRA_ARGS="-p 90"
+DROPBEAR_BANNER="/etc/issue.net"
+DROPBEAR_RECEIVE_WINDOW=65536
+EOF_DB
+  systemctl enable dropbear >/dev/null 2>&1
+  systemctl restart dropbear
+
+  # Configurar Stunnel
+  if [ ! -f /etc/stunnel/stunnel.pem ]; then
+    openssl req -new -x509 -days 3650 -nodes -out /etc/stunnel/stunnel.pem -keyout /etc/stunnel/stunnel.pem -subj "/CN=RussoNet/O=RussoNet/C=DO" 2>/dev/null
+  fi
+  cat << 'EOF_ST' > /etc/stunnel/stunnel.conf
+cert = /etc/stunnel/stunnel.pem
+client = no
+socket = a:SO_REUSEADDR=1
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
+
+[stunnel]
+accept = 443
+connect = 127.0.0.1:110
+EOF_ST
+  sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/stunnel4
+  systemctl enable stunnel4 >/dev/null 2>&1
+  systemctl restart stunnel4
+
+  # Configurar WebSocket Proxy
+  cat << 'EOF_PY' > /usr/local/bin/ws_proxy.py
+import socket, threading
+
+def handle_client(client_socket):
+    try:
+        request = client_socket.recv(1024)
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.connect(('127.0.0.1', 110))
+        server_socket.sendall(request)
+        
+        def forward(src, dst):
+            while True:
+                data = src.recv(4096)
+                if not data: break
+                dst.sendall(data)
+
+        t1 = threading.Thread(target=forward, args=(client_socket, server_socket))
+        t2 = threading.Thread(target=forward, args=(server_socket, client_socket))
+        t1.start(); t2.start()
+    except:
+        client_socket.close()
+
+def main():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(('0.0.0.0', 8080))
+    server.listen(100)
+    while True:
+        client, _ = server.accept()
+        threading.Thread(target=handle_client, args=(client,)).start()
+
+if __name__ == '__main__':
+    main()
+EOF_PY
+
+  cat << 'EOF_WSS' > /etc/systemd/system/ws_proxy.service
+[Unit]
+Description=WebSocket Proxy Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/bin/ws_proxy.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF_WSS
+
+  systemctl daemon-reload
+  systemctl enable ws_proxy.service >/dev/null 2>&1
+  systemctl restart ws_proxy.service
+
+  # Marcar como instalado y configurar auto-inicio
+  touch "$INSTALL_CHECK"
+  touch "$PASS_FILE"
+  sed -i '/^menu$/d' /root/.bashrc
+  echo "menu" >> /root/.bashrc
+
+  echo -e "${Verde}[+] ¡Instalación completada con éxito!${Fin}"
+  read -p " Presiona [Enter] para ingresar al menú..."
+fi
+
+# =====================================================================
+# FUNCIONES DEL PANEL DE ADMINISTRACIÓN
+# =====================================================================
+
 check_port() {
   local port=$1
   if netstat -tuln 2>/dev/null | grep -q ":$port " || lsof -i :$port >/dev/null 2>&1; then
@@ -55,58 +184,22 @@ get_disk_usage() {
 
 gestionar_dropbear() {
   echo -e ""
-  echo -e "${Cian}[*] Verificando e instalando Dropbear...${Fin}"
-  export DEBIAN_FRONTEND=noninteractive
-  export NEEDRESTART_MODE=a
-  apt-get update -y && apt-get install -y -o Dpkg::Options::="--force-confold" dropbear
-
-  cat << 'EOF_DB' > /etc/default/dropbear
-NO_START=0
-DROPBEAR_PORT=110
-DROPBEAR_EXTRA_ARGS="-p 90"
-DROPBEAR_BANNER="/etc/issue.net"
-DROPBEAR_RECEIVE_WINDOW=65536
-EOF_DB
-
-  systemctl enable dropbear >/dev/null 2>&1
+  echo -e "${Cian}[*] Reiniciando Dropbear...${Fin}"
   systemctl restart dropbear
   echo -e "${Verde}[+] Dropbear activo en puertos 110 y 90.${Fin}"
 }
 
 gestionar_stunnel() {
   echo -e ""
-  echo -e "${Cian}[*] Instalando y configurando SSL Tunnel (Puerto 443)...${Fin}"
-  export DEBIAN_FRONTEND=noninteractive
-  export NEEDRESTART_MODE=a
-  apt-get update -y && apt-get install -y -o Dpkg::Options::="--force-confold" stunnel4
-
-  if [ ! -f /etc/stunnel/stunnel.pem ]; then
-    openssl req -new -x509 -days 3650 -nodes -out /etc/stunnel/stunnel.pem -keyout /etc/stunnel/stunnel.pem -subj "/CN=RussoNet/O=RussoNet/C=DO" 2>/dev/null
-  fi
-
-  cat << 'EOF_ST' > /etc/stunnel/stunnel.conf
-cert = /etc/stunnel/stunnel.pem
-client = no
-socket = a:SO_REUSEADDR=1
-socket = l:TCP_NODELAY=1
-socket = r:TCP_NODELAY=1
-
-[stunnel]
-accept = 443
-connect = 127.0.0.1:110
-EOF_ST
-
-  sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/stunnel4
-  systemctl enable stunnel4 >/dev/null 2>&1
+  echo -e "${Cian}[*] Reiniciando SSL Tunnel (Puerto 443)...${Fin}"
   systemctl restart stunnel4
   echo -e "${Verde}[+] Stunnel activo en puerto 443.${Fin}"
 }
 
 gestionar_v2ray() {
   echo -e ""
-  echo -e "${Cian}[*] Instalando V2Ray Core...${Fin}"
-  bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
-
+  echo -e "${Cian}[*] Instalando / Reiniciando V2Ray Core...${Fin}"
+  bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) 2>/dev/null
   mkdir -p /usr/local/etc/v2ray
   cat << 'EOF_V2' > /usr/local/etc/v2ray/config.json
 {
@@ -115,31 +208,16 @@ gestionar_v2ray() {
     "listen": "127.0.0.1",
     "protocol": "vmess",
     "settings": {
-      "clients": [
-        {
-          "id": "b83a38e2-36a3-4631-9a6d-e2511222e3eb",
-          "alterId": 0
-        }
-      ]
+      "clients": [{ "id": "b83a38e2-36a3-4631-9a6d-e2511222e3eb", "alterId": 0 }]
     },
-    "streamSettings": {
-      "network": "ws",
-      "wsSettings": {
-        "path": "/russo"
-      }
-    }
+    "streamSettings": { "network": "ws", "wsSettings": { "path": "/russo" } }
   }],
-  "outbounds": [{
-    "protocol": "freedom",
-    "settings": {}
-  }]
+  "outbounds": [{ "protocol": "freedom", "settings": {} }]
 }
 EOF_V2
-
   systemctl enable v2ray >/dev/null 2>&1
   systemctl restart v2ray
-  systemctl restart ws_proxy.service 2>/dev/null
-  echo -e "${Verde}[+] V2Ray instalado correctamente.${Fin}"
+  echo -e "${Verde}[+] V2Ray activo.${Fin}"
 }
 
 obtener_informacion_v2ray() {
@@ -235,12 +313,10 @@ gestionar_autostart() {
 instalar_badvpn() {
   echo -e ""
   if [ ! -f /usr/local/bin/badvpn-udpgw ]; then
-    echo -e "${Cian}[*] Compilando BadVPN por única vez...${Fin}"
-    cd /tmp
-    rm -rf badvpn
+    echo -e "${Cian}[*] Compilando BadVPN...${Fin}"
+    cd /tmp && rm -rf badvpn
     git clone https://github.com/ambrop72/badvpn.git
-    mkdir -p /tmp/badvpn/build
-    cd /tmp/badvpn/build
+    mkdir -p /tmp/badvpn/build && cd /tmp/badvpn/build
     cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
     make
     find /tmp/badvpn/build -name "badvpn-udpgw" -exec cp {} /usr/local/bin/ \;
@@ -307,6 +383,10 @@ listar_usuarios_estado() {
   echo -e "${Cian}=====================================================================${Fin}"
   read -p " Presiona [Enter] para continuar..."
 }
+
+# =====================================================================
+# BUCLE PRINCIPAL DEL MENÚ
+# =====================================================================
 
 while true; do
   clear
