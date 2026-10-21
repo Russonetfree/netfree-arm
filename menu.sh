@@ -482,21 +482,18 @@ listar_usuarios_estado() {
   echo -e " ${Blanco}USUARIO            ESTADO         CONEXIONES${Fin}"
   echo -e "${Cian}----------------------------------------------------${Fin}"
 
-  # Filtrar para excluir usuarios del sistema operativo
+  # Filtrar usuarios reales de la VPN
   local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
 
   if [ -z "$usuarios" ]; then
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
   else
     for u in $usuarios; do
-      # Contar conexiones activas de SSH directamente ligadas a la terminal
-      local ssh_con=$(who | grep -w "$u" | wc -l)
-      # Contar conexiones activas vía Dropbear
-      local drop_con=$(ps aux | grep dropbear | grep -w "$u" | grep -v grep | wc -l)
-      local total_con=$((ssh_con + drop_con))
-
-      if [ "$total_con" -gt 0 ]; then
-        printf " %-18s ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$total_con"
+      # Comprobar conexiones activas en las sesiones de red y dropbear/ssh
+      local active_ssh=$(ps -u "$u" -o pid,comm 2>/dev/null | grep -E "sshd|dropbear|python" | wc -l)
+      
+      if [ "$active_ssh" -gt 0 ]; then
+        printf " %-18s ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$active_ssh"
       else
         printf " %-18s ${Rojo}[ OFFLINE ]${Fin}    0 conex.\n" "$u"
       fi
