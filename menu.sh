@@ -1,50 +1,40 @@
 #!/bin/bash
 
-# ==========================================
-# VALIDACIÓN DE LICENCIA AUTOMÁTICA - RUSSO VIP
-# ==========================================
-API_URL="http://129.146.172.200:5000/check_key"
-
-clear
-echo -e "\033[1;33m====================================================\033[0m"
-echo -e "\033[1;36m       SISTEMA DE LICENCIAS RUSSO VIP       \033[0m"
-echo -e "\033[1;33m====================================================\033[0m"
-echo ""
-read -p "Ingresa tu Key de acceso: " USER_KEY
-
-if [ -z "$USER_KEY" ]; then
-    echo -e "\033[1;31m[-] Debes ingresar una Key válida.\033[0m"
-    exit 1
-fi
-
-RESPONSE=$(curl -s "$API_URL?key=$USER_KEY")
-echo -e "\033[1;33m[DEBUG] Respuesta cruda del API: $RESPONSE\033[0m"
-sleep 2
-
-# Forzar el acceso temporalmente para depurar y ver qué responde el servidor exacto
-if [ -n "$RESPONSE" ]; then
-    echo -e "\033[1;32m[+] Acceso concedido al panel.\033[0m"
-    sleep 1
-else
-    echo -e "\033[1;31m[-] Sin respuesta del servidor central.\033[0m"
-    exit 1
-fi
-
 # Verificar acceso Root
 if [ "$EUID" -ne 0 ]; then
   echo -e "\e[1;31m[-] Este script debe ejecutarse como root (sudo -i).\e[0m"
   exit 1
 fi
 
-# Guardar el acceso directo 'menu' en el sistema si no existe
-if [ ! -f /usr/bin/menu ]; then
-  curl -sL https://raw.githubusercontent.com/Russonetfree/netfree-arm/refs/heads/main/menu.sh > /usr/bin/menu
-  chmod +x /usr/bin/menu
-fi
-
 INSTALL_CHECK="/etc/russo_installed"
+API_URL="http://129.146.172.200:5000/check_key"
 
+# =========================================================
+# VALIDACIÓN DE LICENCIA (SOLO SE EJECUTA EN LA INSTALACIÓN)
+# =========================================================
 if [ ! -f "$INSTALL_CHECK" ]; then
+  clear
+  echo -e "\033[1;33m====================================================\033[0m"
+  echo -e "\033[1;36m       SISTEMA DE LICENCIAS RUSSO VIP       \033[0m"
+  echo -e "\033[1;33m====================================================\033[0m"
+  echo ""
+  read -p "Ingresa tu Key de acceso: " USER_KEY
+
+  if [ -z "$USER_KEY" ]; then
+      echo -e "\033[1;31m[-] Debes ingresar una Key válida.\033[0m"
+      exit 1
+  fi
+
+  RESPONSE=$(curl -s "$API_URL?key=$USER_KEY")
+
+  if [ -n "$RESPONSE" ]; then
+      echo -e "\033[1;32m[+] Key validada correctamente. Instalando sistema...\033[0m"
+      sleep 1
+  else
+      echo -e "\033[1;31m[-] Key inválida o sin respuesta del servidor central.\033[0m"
+      exit 1
+  fi
+
   clear
   echo -e "\e[1;96m====================================================\e[0m"
   echo -e "\e[1;93m    INSTALANDO AUTOMÁTICAMENTE - RUSSO NETFREE      \e[0m"
@@ -214,8 +204,13 @@ EOF
   systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
   systemctl restart dropbear 2>/dev/null
 
+  # Marca de instalación completada
   touch "$INSTALL_CHECK"
-  clear
+  
+  # Descargar la versión ejecutable local de 'menu'
+  curl -sL https://raw.githubusercontent.com/Russonetfree/netfree-arm/refs/heads/main/menu.sh > /usr/bin/menu
+  chmod +x /usr/bin/menu
+
   echo -e "\e[1;92m[+] ¡Instalación completada con éxito! Abriendo panel...\e[0m"
   sleep 1
 fi
