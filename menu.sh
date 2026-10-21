@@ -42,7 +42,7 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
   RESPONSE=$(curl -s "${API_URL}?key=${REG_KEY}")
 
-  # VALIDACIÓN FLEXIBLE CON EL SERVIDOR (Acepta keys válidas recién generadas)
+  # VALIDACIÓN FLEXIBLE CON EL SERVIDOR
   if [[ "$RESPONSE" == *'"valid":true'* ]] || [[ "$RESPONSE" == *'"success":true'* ]] || [[ "$RESPONSE" == *'"status":"ok"'* ]] || [[ "$RESPONSE" == *'"status":"active"'* ]] || [[ "$RESPONSE" == *'Licencia'* && "$RESPONSE" != *'utilizada'* ]]; then
     echo -e "${Verde}[+] Key aceptada correctamente.${Fin}"
   else
@@ -459,7 +459,6 @@ listar_usuarios_estado() {
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
 
   local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
-  local con_v2ray=$(netstat -tnp 2>/dev/null | grep -E ":(80|8080|10080) " | grep -i "ESTABLISHED" | wc -l)
 
   if [ -z "$usuarios" ]; then
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
@@ -473,17 +472,8 @@ listar_usuarios_estado() {
         fi
       fi
 
-      local total_con=0
-      local c_ps=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|bash|sh" | wc -l)
-      local c_net=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep -i "established" | grep -w "$u" | wc -l)
-      local c_who=$(who 2>/dev/null | grep -w "$u" | wc -l)
-      local c_db=$(pgrep -u "$u" dropbear 2>/dev/null | wc -l)
-
-      total_con=$((c_ps + c_net + c_who + c_db))
-
-      if [ "$total_con" -eq 0 ] && [ "$con_v2ray" -gt 0 ]; then
-        total_con=$con_v2ray
-      fi
+      # Conexiones SSH / Dropbear estrictas por sockets de red activos
+      local total_con=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep -i "ESTABLISHED" | grep -w "$u" | wc -l)
 
       if [ "$total_con" -gt 0 ]; then
         printf " %-18s ${Amarillo}%-18s${Fin} ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$pwd_usr" "$total_con"
