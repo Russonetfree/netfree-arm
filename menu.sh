@@ -19,7 +19,7 @@ Blanco="\e[1;97m"
 Fin="\e[0m"
 
 # =====================================================================
-# RUTINA DE INSTALACIÓN INICIAL CON TU MÉTODO ORIGINAL DE API
+# INSTALACIÓN INICIAL CON VALIDACIÓN DE KEY + CONFIGURACIÓN DE ARM3
 # =====================================================================
 if [ ! -f "$INSTALL_CHECK" ]; then
   clear
@@ -34,7 +34,6 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   fi
 
   echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
-  
   RESPONSE=$(curl -s "${API_URL}?key=${REG_KEY}")
 
   if [[ "$RESPONSE" == *"true"* ]] || [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"success"* ]] || [ -n "$REG_KEY" ]; then
@@ -47,34 +46,33 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   echo -e "${Cian}[*] Instalando paquetes y servicios del sistema...${Fin}"
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
-  apt-get update -y
-  apt-get install -y -o Dpkg::Options::="--force-confold" dropbear stunnel4 python3 net-tools lsof cmake git curl wget ufw iptables
 
-  # Limpiar y abrir puertos en el firewall
-  ufw disable 2>/dev/null
-  iptables -F
-  iptables -I INPUT -p tcp --dport 80 -j ACCEPT
-  iptables -I INPUT -p tcp --dport 110 -j ACCEPT
-  iptables -I INPUT -p tcp --dport 90 -j ACCEPT
-  iptables -I INPUT -p tcp --dport 443 -j ACCEPT
-  iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
+  apt-get update -y && apt-get upgrade -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef"
+  apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear stunnel4 unzip jq
 
-  # Configurar Dropbear
-  cat << 'EOF_DB' > /etc/default/dropbear
+  cat << 'EOF' > /etc/issue.net
+<h3 style="text-align:center;">
+  <font color="#FF0000">RUSSONET VPN</font> &#127916; <font color="#FF7F50">Youtube</font><br>
+  &#128233; <font color="#FFAB00">Redes Sociales</font> | &#127760; <font color="#8FBC8F">Internet</font><br>
+  &#128587;&#127997; <font color="#E040FB">VideoLlamadas</font> | Contacto russotvbox77@gmail.com
+</h3>
+EOF
+
+  cat << 'EOF' > /etc/default/dropbear
 NO_START=0
 DROPBEAR_PORT=110
 DROPBEAR_EXTRA_ARGS="-p 90"
 DROPBEAR_BANNER="/etc/issue.net"
 DROPBEAR_RECEIVE_WINDOW=65536
-EOF_DB
+EOF
   systemctl enable dropbear >/dev/null 2>&1
   systemctl restart dropbear
 
-  # Configurar Stunnel
   if [ ! -f /etc/stunnel/stunnel.pem ]; then
     openssl req -new -x509 -days 3650 -nodes -out /etc/stunnel/stunnel.pem -keyout /etc/stunnel/stunnel.pem -subj "/CN=RussoNet/O=RussoNet/C=DO" 2>/dev/null
   fi
-  cat << 'EOF_ST' > /etc/stunnel/stunnel.conf
+
+  cat << 'EOF' > /etc/stunnel/stunnel.conf
 cert = /etc/stunnel/stunnel.pem
 client = no
 socket = a:SO_REUSEADDR=1
@@ -84,104 +82,114 @@ socket = r:TCP_NODELAY=1
 [stunnel]
 accept = 443
 connect = 127.0.0.1:110
-EOF_ST
+EOF
+
   sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/stunnel4
   systemctl enable stunnel4 >/dev/null 2>&1
   systemctl restart stunnel4
 
-  # Configurar WebSocket Proxy Unificado (Compatible con puertos 80 y 8080)
-  cat << 'EOF_PY' > /usr/local/bin/ws_proxy.py
-import socket, threading
+  iptables -F
+  iptables -X
+  iptables -t nat -F
+  iptables -t nat -X
+  iptables -P INPUT ACCEPT
+  iptables -P FORWARD ACCEPT
+  iptables -P OUTPUT ACCEPT
+  iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
 
-RESPONSE = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"
+  # PROXY PYTHON DE ARM3 (SECT.SELECT MULTIPLEXADO)
+  cat << 'EOF' > /usr/local/bin/ws_proxy.py
+import socket, select, threading
 
-def handle_client(client_socket):
+PORTS = [80, 8080]
+SSH_PORT = 110
+V2RAY_INTERNAL_PORT = 10080
+
+def handle_client(client_sock):
     try:
-        request = client_socket.recv(2048)
+        request = client_sock.recv(4096)
         if not request:
-            client_socket.close()
+            client_sock.close()
             return
 
-        # Si la petición es para V2Ray (/russo), redirige al core local 10080, sino a Dropbear (110)
-        if b"path: /russo" in request or b"/russo" in request:
-            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_socket.connect(('127.0.0.1', 10080))
-            server_socket.sendall(request)
+        if b"GET /russo" in request or b"Path: /russo" in request or b"/russo" in request:
+            target_port = V2RAY_INTERNAL_PORT
+            target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            target_sock.connect(('127.0.0.1', target_port))
+            target_sock.sendall(request)
         else:
-            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_socket.connect(('127.0.0.1', 110))
-            if b"Upgrade: websocket" in request or b"HTTP/" in request:
-                client_socket.sendall(RESPONSE)
-            else:
-                server_socket.sendall(request)
+            target_port = SSH_PORT
+            target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            target_sock.connect(('127.0.0.1', target_port))
+            client_sock.sendall(b'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')
 
-        def forward(src, dst):
-            try:
-                while True:
-                    data = src.recv(4096)
-                    if not data: break
-                    dst.sendall(data)
-            except:
-                pass
-            finally:
-                try: src.close()
-                except: pass
-                try: dst.close()
-                except: pass
-
-        t1 = threading.Thread(target=forward, args=(client_socket, server_socket))
-        t2 = threading.Thread(target=forward, args=(server_socket, client_socket))
-        t1.daemon = True
-        t2.daemon = True
-        t1.start()
-        t2.start()
+        sockets = [client_sock, target_sock]
+        while True:
+            r, w, e = select.select(sockets, [], [], 60)
+            if not r: break
+            if client_sock in r:
+                data = client_sock.recv(4096)
+                if not data: break
+                target_sock.sendall(data)
+            if target_sock in r:
+                data = target_sock.recv(4096)
+                if not data: break
+                client_sock.sendall(data)
     except:
-        try: client_socket.close()
+        pass
+    finally:
+        client_sock.close()
+        try: target_sock.close()
         except: pass
 
-def start_listener(port):
-    try:
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(('0.0.0.0', port))
-        server.listen(200)
-        while True:
-            client, _ = server.accept()
-            threading.Thread(target=handle_client, args=(client,), daemon=True).start()
-    except Exception as e:
-        pass
+def listen_port(port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('0.0.0.0', port))
+    s.listen(500)
+    while True:
+        client, _ = s.accept()
+        threading.Thread(target=handle_client, args=(client,)).start()
 
 if __name__ == '__main__':
-    threading.Thread(target=start_listener, args=(80,), daemon=True).start()
-    threading.Thread(target=start_listener, args=(8080,), daemon=True).start()
-    threading.Event().wait()
-EOF_PY
+    for p in PORTS:
+        threading.Thread(target=listen_port, args=(p,)).start()
+EOF
 
-  cat << 'EOF_WSS' > /etc/systemd/system/ws_proxy.service
+  cat << 'EOF' > /etc/systemd/system/ws_proxy.service
 [Unit]
-Description=WebSocket Proxy Service
+Description=WebSocket Proxy Service RUSSO
 After=network.target
 
 [Service]
 ExecStart=/usr/bin/python3 /usr/local/bin/ws_proxy.py
 Restart=always
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-EOF_WSS
+EOF
 
   systemctl daemon-reload
   systemctl enable ws_proxy.service >/dev/null 2>&1
   systemctl restart ws_proxy.service
 
-  # Marcar como instalado y configurar auto-inicio
+  if grep -q "^Banner" /etc/ssh/sshd_config; then
+    sed -i 's|^Banner.*|Banner /etc/issue.net|' /etc/ssh/sshd_config
+  else
+    echo "Banner /etc/issue.net" >> /etc/ssh/sshd_config
+  fi
+
+  systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
+  systemctl restart dropbear 2>/dev/null
+
   touch "$INSTALL_CHECK"
   touch "$PASS_FILE"
   sed -i '/^menu$/d' /root/.bashrc
   echo "menu" >> /root/.bashrc
 
-  echo -e "${Verde}[+] ¡Instalación completada con éxito!${Fin}"
-  read -p " Presiona [Enter] para ingresar al menú..."
+  echo -e "${Verde}[+] ¡Instalación completada con éxito! Abriendo panel...${Fin}"
+  sleep 1
 fi
 
 # =====================================================================
@@ -225,47 +233,97 @@ get_disk_usage() {
 
 gestionar_dropbear() {
   echo -e ""
-  echo -e "${Cian}[*] Reiniciando Dropbear...${Fin}"
+  echo -e "${Cian}[*] Verificando e instalando Dropbear...${Fin}"
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
+  apt-get update -y && apt-get install -y -o Dpkg::Options::="--force-confold" dropbear
+
+  cat << 'EOF' > /etc/default/dropbear
+NO_START=0
+DROPBEAR_PORT=110
+DROPBEAR_EXTRA_ARGS="-p 90"
+DROPBEAR_BANNER="/etc/issue.net"
+DROPBEAR_RECEIVE_WINDOW=65536
+EOF
+
+  systemctl enable dropbear >/dev/null 2>&1
   systemctl restart dropbear
   echo -e "${Verde}[+] Dropbear activo en puertos 110 y 90.${Fin}"
 }
 
 gestionar_stunnel() {
   echo -e ""
-  echo -e "${Cian}[*] Reiniciando SSL Tunnel (Puerto 443)...${Fin}"
+  echo -e "${Cian}[*] Instalando y configurando SSL Tunnel (Puerto 443)...${Fin}"
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
+  apt-get update -y && apt-get install -y -o Dpkg::Options::="--force-confold" stunnel4
+
+  if [ ! -f /etc/stunnel/stunnel.pem ]; then
+    openssl req -new -x509 -days 3650 -nodes -out /etc/stunnel/stunnel.pem -keyout /etc/stunnel/stunnel.pem -subj "/CN=RussoNet/O=RussoNet/C=DO" 2>/dev/null
+  fi
+
+  cat << 'EOF' > /etc/stunnel/stunnel.conf
+cert = /etc/stunnel/stunnel.pem
+client = no
+socket = a:SO_REUSEADDR=1
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
+
+[stunnel]
+accept = 443
+connect = 127.0.0.1:110
+EOF
+
+  sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/stunnel4
+  systemctl enable stunnel4 >/dev/null 2>&1
   systemctl restart stunnel4
   echo -e "${Verde}[+] Stunnel activo en puerto 443.${Fin}"
 }
 
 gestionar_v2ray() {
   echo -e ""
-  echo -e "${Cian}[*] Instalando / Reiniciando V2Ray Core (Compartiendo puertos 80/8080 vía WebSocket)...${Fin}"
-  bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) 2>/dev/null
+  echo -e "${Cian}[*] Instalando V2Ray Core...${Fin}"
+  bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+
   mkdir -p /usr/local/etc/v2ray
-  cat << 'EOF_V2' > /usr/local/etc/v2ray/config.json
+  cat << 'EOF' > /usr/local/etc/v2ray/config.json
 {
   "inbounds": [{
     "port": 10080,
     "listen": "127.0.0.1",
     "protocol": "vmess",
     "settings": {
-      "clients": [{ "id": "b83a38e2-36a3-4631-9a6d-e2511222e3eb", "alterId": 0 }]
+      "clients": [
+        {
+          "id": "b83a38e2-36a3-4631-9a6d-e2511222e3eb",
+          "alterId": 0
+        }
+      ]
     },
-    "streamSettings": { "network": "ws", "wsSettings": { "path": "/russo" } }
+    "streamSettings": {
+      "network": "ws",
+      "wsSettings": {
+        "path": "/russo"
+      }
+    }
   }],
-  "outbounds": [{ "protocol": "freedom", "settings": {} }]
+  "outbounds": [{
+    "protocol": "freedom",
+    "settings": {}
+  }]
 }
-EOF_V2
+EOF
+
   systemctl enable v2ray >/dev/null 2>&1
   systemctl restart v2ray
   systemctl restart ws_proxy.service
-  echo -e "${Verde}[+] V2Ray activo y enlazado con los puertos 80 y 8080.${Fin}"
+  echo -e "${Verde}[+] V2Ray instalado correctamente.${Fin}"
 }
 
 obtener_informacion_v2ray() {
   clear
   echo -e "${Cian}====================================================${Fin}"
-  echo -e "${Amarillo}         INFORMACIÓN DE CUENTA V2RAY                ${Fin}"
+  echo -e "${Amarillo}          INFORMACIÓN DE CUENTA V2RAY               ${Fin}"
   echo -e "${Cian}====================================================${Fin}"
 
   local ip_publica=$(curl -s http://checkip.amazonaws.com || wget -qO- http://ipecho.net/plain)
@@ -275,7 +333,7 @@ obtener_informacion_v2ray() {
   fi
 
   local uuid="b83a38e2-36a3-4631-9a6d-e2511222e3eb"
-  local puerto="80"
+  local puerto="8080"
   local path_ws="/russo"
 
   echo -e ""
@@ -355,17 +413,19 @@ gestionar_autostart() {
 instalar_badvpn() {
   echo -e ""
   if [ ! -f /usr/local/bin/badvpn-udpgw ]; then
-    echo -e "${Cian}[*] Compilando BadVPN...${Fin}"
-    cd /tmp && rm -rf badvpn
+    echo -e "${Cian}[*] Compilando BadVPN por única vez...${Fin}"
+    cd /tmp
+    rm -rf badvpn
     git clone https://github.com/ambrop72/badvpn.git
-    mkdir -p /tmp/badvpn/build && cd /tmp/badvpn/build
+    mkdir -p /tmp/badvpn/build
+    cd /tmp/badvpn/build
     cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
     make
     find /tmp/badvpn/build -name "badvpn-udpgw" -exec cp {} /usr/local/bin/ \;
     rm -rf /tmp/badvpn
   fi
 
-  cat << 'EOF_BV' > /etc/systemd/system/badvpn.service
+  cat << 'EOF' > /etc/systemd/system/badvpn.service
 [Unit]
 Description=BadVPN UDP Gateway Service
 After=network.target
@@ -377,10 +437,10 @@ RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-EOF_BV
+EOF
 
   systemctl daemon-reload
-  systemctl enable badevpn.service >/dev/null 2>&1
+  systemctl enable badvpn.service >/dev/null 2>&1
   systemctl restart badvpn.service
   echo -e "${Verde}[+] BadVPN activo en puerto 7300.${Fin}"
 }
@@ -530,7 +590,7 @@ while true; do
       echo -e ""
       echo -e "${Cian}[*] Reiniciando WebSocket Proxy en puertos 80 y 8080...${Fin}"
       systemctl restart ws_proxy.service 2>/dev/null
-      echo -e "${Verde}[+] WebSocket activo correctamente.${Fin}"
+      echo -e "${Verde}[+] Servicio WebSocket activo correctamente.${Fin}"
       read -p " Presiona [Enter] para continuar..."
       ;;
     6)
