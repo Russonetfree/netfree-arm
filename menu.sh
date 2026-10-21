@@ -58,7 +58,6 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   iptables -I INPUT -p tcp --dport 90 -j ACCEPT
   iptables -I INPUT -p tcp --dport 443 -j ACCEPT
   iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
-  iptables -I INPUT -p tcp --dport 10080 -j ACCEPT
 
   # Configurar Dropbear
   cat << 'EOF_DB' > /etc/default/dropbear
@@ -90,7 +89,7 @@ EOF_ST
   systemctl enable stunnel4 >/dev/null 2>&1
   systemctl restart stunnel4
 
-  # Configurar WebSocket Proxy Compatible con HTTP Custom (Puertos 80 y 8080)
+  # Configurar WebSocket Proxy Unificado (Compatible con puertos 80 y 8080)
   cat << 'EOF_PY' > /usr/local/bin/ws_proxy.py
 import socket, threading
 
@@ -103,13 +102,18 @@ def handle_client(client_socket):
             client_socket.close()
             return
 
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.connect(('127.0.0.1', 110))
-
-        if b"Upgrade: websocket" in request or b"HTTP/" in request:
-            client_socket.sendall(RESPONSE)
-        else:
+        # Si la petición es para V2Ray (/russo), redirige al core local 10080, sino a Dropbear (110)
+        if b"path: /russo" in request or b"/russo" in request:
+            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_socket.connect(('127.0.0.1', 10080))
             server_socket.sendall(request)
+        else:
+            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_socket.connect(('127.0.0.1', 110))
+            if b"Upgrade: websocket" in request or b"HTTP/" in request:
+                client_socket.sendall(RESPONSE)
+            else:
+                server_socket.sendall(request)
 
         def forward(src, dst):
             try:
@@ -235,14 +239,14 @@ gestionar_stunnel() {
 
 gestionar_v2ray() {
   echo -e ""
-  echo -e "${Cian}[*] Instalando / Configurando V2Ray Core en Puerto 10080...${Fin}"
+  echo -e "${Cian}[*] Instalando / Reiniciando V2Ray Core (Compartiendo puertos 80/8080 vía WebSocket)...${Fin}"
   bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) 2>/dev/null
   mkdir -p /usr/local/etc/v2ray
   cat << 'EOF_V2' > /usr/local/etc/v2ray/config.json
 {
   "inbounds": [{
     "port": 10080,
-    "listen": "0.0.0.0",
+    "listen": "127.0.0.1",
     "protocol": "vmess",
     "settings": {
       "clients": [{ "id": "b83a38e2-36a3-4631-9a6d-e2511222e3eb", "alterId": 0 }]
@@ -254,8 +258,8 @@ gestionar_v2ray() {
 EOF_V2
   systemctl enable v2ray >/dev/null 2>&1
   systemctl restart v2ray
-  systemctl restart ws_proxy.service 2>/dev/null
-  echo -e "${Verde}[+] V2Ray activo correctamente en puerto 10080 (Sin interferir con WS Proxy).${Fin}"
+  systemctl restart ws_proxy.service
+  echo -e "${Verde}[+] V2Ray activo y enlazado con los puertos 80 y 8080.${Fin}"
 }
 
 obtener_informacion_v2ray() {
@@ -271,7 +275,7 @@ obtener_informacion_v2ray() {
   fi
 
   local uuid="b83a38e2-36a3-4631-9a6d-e2511222e3eb"
-  local puerto="10080"
+  local puerto="80"
   local path_ws="/russo"
 
   echo -e ""
@@ -376,7 +380,7 @@ WantedBy=multi-user.target
 EOF_BV
 
   systemctl daemon-reload
-  systemctl enable badvpn.service >/dev/null 2>&1
+  systemctl enable badevpn.service >/dev/null 2>&1
   systemctl restart badvpn.service
   echo -e "${Verde}[+] BadVPN activo en puerto 7300.${Fin}"
 }
@@ -447,7 +451,7 @@ while true; do
   echo -e "  ${Blanco}• OpenSSH (Puerto 22)        :${Fin} $(check_port 22)"
   echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
   echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
-  echo -e "  ${Blanco}• V2Ray (VMess Puerto 10080) :${Fin} $(check_port 10080)"
+  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin} $(check_port 10080)"
   echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin} $(check_port 8080)"
   echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
   echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
@@ -462,7 +466,7 @@ while true; do
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
   echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
-  echo -e " ${Cian}[08]${Fin} ${Blanco}Instalar / Activar V2Ray en Puerto 10080${Fin}"
+  echo -e " ${Cian}[08]${Fin} ${Blanco}Instalar / Activar V2Ray en Puerto 8080/80${Fin}"
   echo -e " ${Cian}[09]${Fin} ${Verde}Obtener Enlace VMess / Información V2Ray${Fin}"
   echo -e " ${Cian}[10]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
   echo -e " ${Cian}[11]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
