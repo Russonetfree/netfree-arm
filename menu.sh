@@ -19,7 +19,7 @@ Blanco="\e[1;97m"
 Fin="\e[0m"
 
 # =====================================================================
-# RUTINA DE INSTALACIÓN INICIAL CON TU MÉTODO ORIGINAL DE API
+# RUTINA DE INSTALACIÓN INICIAL CON VALIDACIÓN ESTRICTA DE API KEY
 # =====================================================================
 if [ ! -f "$INSTALL_CHECK" ]; then
   clear
@@ -34,10 +34,10 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   fi
 
   echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
-  
   RESPONSE=$(curl -s "${API_URL}?key=${REG_KEY}")
 
-  if [[ "$RESPONSE" == *"true"* ]] || [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"success"* ]] || [ -n "$REG_KEY" ]; then
+  # VALIDACIÓN ESTRICTA: Solo avanza si el servidor responde true, valid o success
+  if [[ "$RESPONSE" == *"true"* ]] || [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"success"* ]]; then
     echo -e "${Verde}[+] Key aceptada correctamente.${Fin}"
   else
     echo -e "${Rojo}[-] Key inválida, caducada o ya utilizada.${Fin}"
@@ -487,7 +487,7 @@ listar_usuarios_estado() {
     done
   fi
 
-  echo -e "${Cian}====================================================================${Fin}"
+  echo -e "${Cian}=====================================================================${Fin}"
   read -p " Presiona [Enter] para continuar..."
 }
 
