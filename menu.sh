@@ -139,7 +139,7 @@ def handle_client(client_sock):
             if target_sock in r:
                 data = target_sock.recv(4096)
                 if not data: break
-                target_sock.sendall(data)
+                client_sock.sendall(data)
     except:
         pass
     finally:
@@ -459,6 +459,7 @@ listar_usuarios_estado() {
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
 
   local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
+  local con_v2ray=$(netstat -tnp 2>/dev/null | grep -E ":(80|8080|10080) " | grep -i "ESTABLISHED" | wc -l)
 
   if [ -z "$usuarios" ]; then
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
@@ -472,13 +473,17 @@ listar_usuarios_estado() {
         fi
       fi
 
-      # Verificación dual precisa por procesos activos del usuario
       local total_con=0
-      local c_dropbear=$(pgrep -u "$u" dropbear 2>/dev/null | wc -l)
-      local c_sshd=$(pgrep -u "$u" sshd 2>/dev/null | wc -l)
+      local c_ps=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|bash|sh" | wc -l)
+      local c_net=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep -i "established" | grep -w "$u" | wc -l)
       local c_who=$(who 2>/dev/null | grep -w "$u" | wc -l)
+      local c_db=$(pgrep -u "$u" dropbear 2>/dev/null | wc -l)
 
-      total_con=$((c_dropbear + c_sshd + c_who))
+      total_con=$((c_ps + c_net + c_who + c_db))
+
+      if [ "$total_con" -eq 0 ] && [ "$con_v2ray" -gt 0 ]; then
+        total_con=$con_v2ray
+      fi
 
       if [ "$total_con" -gt 0 ]; then
         printf " %-18s ${Amarillo}%-18s${Fin} ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$pwd_usr" "$total_con"
