@@ -205,11 +205,9 @@ EOF
   systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
   systemctl restart dropbear 2>/dev/null
 
-  # Marca de instalación completada y archivo de contraseñas limpio
   touch "$INSTALL_CHECK"
   touch "$PASS_FILE"
   
-  # Descargar la versión ejecutable local de 'menu'
   curl -sL https://raw.githubusercontent.com/Russonetfree/netfree-arm/refs/heads/main/menu.sh > /usr/bin/menu
   chmod +x /usr/bin/menu
 
@@ -490,7 +488,6 @@ listar_usuarios_estado() {
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
   else
     for u in $usuarios; do
-      # Obtener contraseña del archivo de registros internos o indicar predeterminada
       local pwd_usr="[Protegida]"
       if [ -f "$PASS_FILE" ]; then
         local found_pwd=$(grep "^$u:" "$PASS_FILE" | cut -d: -f2)
@@ -499,12 +496,17 @@ listar_usuarios_estado() {
         fi
       fi
 
-      # Comprobar estado en línea por sockets de dropbear/ssh
+      # Detección real basada en conexiones TCP establecidas asociadas a las sesiones de red de los puertos 110, 90 o 22
       local total_con=0
-      active_check=$(netstat -tnpa 2>/dev/null | grep ESTABLISHED | grep -E "110|90|22" | wc -l)
-      if [ "$active_check" -gt 0 ]; then
-        # Verificar si hay procesos del usuario activo
-        if ps -u "$u" --no-headers 2>/dev/null | grep -q [0-9] || [ "$u" = "Russo" ]; then
+      
+      # Comprobar si hay conexiones activas en el sistema para este usuario específico
+      # Dropbear registra las conexiones activas en las conexiones establecidas hacia el puerto local
+      local active_dropbear=$(netstat -tnpa 2>/dev/null | grep ESTABLISHED | grep -E "110|90|22" | wc -l)
+      
+      # Validar si el usuario tiene un proceso activo real ejecutándose o una sesión establecida en Dropbear/SSH
+      if [ "$active_dropbear" -gt 0 ]; then
+        # Verificamos mediante log o sesión activa de red si coincide con el usuario conectado
+        if who | grep -w "$u" &>/dev/null || pgrep -u "$u" &>/dev/null; then
           total_con=1
         fi
       fi
@@ -577,9 +579,8 @@ while true; do
         useradd -m -s /bin/bash "$nuevo_user"
         echo "$nuevo_user:$nuevo_pass" | chpasswd
         
-        # Guardar la contraseña en el archivo de texto plano para mostrarla en el reporte
         touch "$PASS_FILE"
-        sed -i "/^$u:/d" "$PASS_FILE" 2>/dev/null
+        sed -i "/^$nuevo_user:/d" "$PASS_FILE" 2>/dev/null
         echo "$nuevo_user:$nuevo_pass" >> "$PASS_FILE"
 
         echo -e "${Verde}[+] Usuario '$nuevo_user' creado con éxito.${Fin}"
@@ -593,7 +594,6 @@ while true; do
         echo -e ""
         echo "$mod_user:$nueva_pass" | chpasswd
         
-        # Actualizar contraseña en el registro plano
         touch "$PASS_FILE"
         sed -i "/^$mod_user:/d" "$PASS_FILE"
         echo "$mod_user:$nueva_pass" >> "$PASS_FILE"
