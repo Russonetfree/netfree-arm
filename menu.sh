@@ -7,6 +7,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 INSTALL_CHECK="/etc/russo_installed"
+PASS_FILE="/etc/russo_passwords.txt"
 API_URL="http://129.146.172.200:5000/check_key"
 
 # =========================================================
@@ -204,8 +205,9 @@ EOF
   systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
   systemctl restart dropbear 2>/dev/null
 
-  # Marca de instalación completada
+  # Marca de instalación completada y archivo de contraseñas limpio
   touch "$INSTALL_CHECK"
+  touch "$PASS_FILE"
   
   # Descargar la versión ejecutable local de 'menu'
   curl -sL https://raw.githubusercontent.com/Russonetfree/netfree-arm/refs/heads/main/menu.sh > /usr/bin/menu
@@ -469,18 +471,18 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable baddy-udpgw >/dev/null 2>&1
+  systemctl enable badvpn.service >/dev/null 2>&1
   systemctl restart badvpn.service
   echo -e "${Verde}[+] BadVPN activo en puerto 7300.${Fin}"
 }
 
 listar_usuarios_estado() {
   clear
-  echo -e "${Cian}====================================================${Fin}"
-  echo -e "${Amarillo}          ESTADO DE USUARIOS REGISTRADOS            ${Fin}"
-  echo -e "${Cian}====================================================${Fin}"
-  echo -e " ${Blanco}USUARIO            ESTADO         CONEXIONES${Fin}"
-  echo -e "${Cian}----------------------------------------------------${Fin}"
+  echo -e "${Cian}=====================================================================${Fin}"
+  echo -e "${Amarillo}                MOSTRAR USUARIOS REGISTRADOS                         ${Fin}"
+  echo -e "${Cian}=====================================================================${Fin}"
+  echo -e " ${Blanco}USUARIO            CONTRASEÑA         ESTADO         CONEXIONES${Fin}"
+  echo -e "${Cian}---------------------------------------------------------------------${Fin}"
 
   local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
 
@@ -488,40 +490,34 @@ listar_usuarios_estado() {
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
   else
     for u in $usuarios; do
-      # Comprobación basada en sesiones activas de usuario (w / who / ps)
-      local total_con=0
-      if who | grep -w "$u" &>/dev/null || ps -u "$u" -o pid | grep -q [0-9]; then
-        # Contar procesos activos reales del usuario logueado en la vps/dropbear
-        local p_count=$(ps -u "$u" --no-headers 2>/dev/null | wc -l)
-        if [ "$p_count" -gt 0 ]; then
-          total_con=$p_count
+      # Obtener contraseña del archivo de registros internos o indicar predeterminada
+      local pwd_usr="[Protegida]"
+      if [ -f "$PASS_FILE" ]; then
+        local found_pwd=$(grep "^$u:" "$PASS_FILE" | cut -d: -f2)
+        if [ ! -z "$found_pwd" ]; then
+          pwd_usr="$found_pwd"
         fi
       fi
 
-      # Validación directa sobre sockets activos de dropbear/ssh si hay tráfico cifrado
-      if [ "$total_con0" = "" ]; then
-        total_con=0
-      fi
-
-      # Si está conectado en websocket, Dropbear maneja una sesión activa para el usuario
-      if grep -q "$u" /etc/passwd; then
-        # Verificar si hay sesiones abiertas en w o who o netstat con el puerto interno de dropbear
-        active_check=$(netstat -tnpa 2>/dev/null | grep ESTABLISHED | grep -E "110|90" | wc -l)
-        if [ "$active_check" -gt 0 ] && [ "$u" = "Russo" ]; then
-          # Forzar detección si está probando activamente la conexión de red
+      # Comprobar estado en línea por sockets de dropbear/ssh
+      local total_con=0
+      active_check=$(netstat -tnpa 2>/dev/null | grep ESTABLISHED | grep -E "110|90|22" | wc -l)
+      if [ "$active_check" -gt 0 ]; then
+        # Verificar si hay procesos del usuario activo
+        if ps -u "$u" --no-headers 2>/dev/null | grep -q [0-9] || [ "$u" = "Russo" ]; then
           total_con=1
         fi
       fi
 
       if [ "$total_con" -gt 0 ]; then
-        printf " %-18s ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$total_con"
+        printf " %-18s ${Amarillo}%-18s${Fin} ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$pwd_usr" "$total_con"
       else
-        printf " %-18s ${Rojo}[ OFFLINE ]${Fin}    0 conex.\n" "$u"
+        printf " %-18s ${Amarillo}%-18s${Fin} ${Rojo}[ OFFLINE ]${Fin}    0 conex.\n" "$u" "$pwd_usr"
       fi
     done
   fi
 
-  echo -e "${Cian}====================================================${Fin}"
+  echo -e "${Cian}=====================================================================${Fin}"
   read -p " Presiona [Enter] para continuar..."
 }
 
@@ -556,7 +552,7 @@ while true; do
   echo -e " ${Cian}[01]${Fin} ${Blanco}Crear Usuario${Fin}"
   echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
-  echo -e " ${Cian}[04]${Fin} ${Verde}Listar Usuarios (Ver Estado ONLINE/OFFLINE)${Fin}"
+  echo -e " ${Cian}[04]${Fin} ${Verde}Mostrar Usuarios Registrados (Usuario / Contraseña / Estado)${Fin}"
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
   echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
@@ -580,6 +576,12 @@ while true; do
         echo -e ""
         useradd -m -s /bin/bash "$nuevo_user"
         echo "$nuevo_user:$nuevo_pass" | chpasswd
+        
+        # Guardar la contraseña en el archivo de texto plano para mostrarla en el reporte
+        touch "$PASS_FILE"
+        sed -i "/^$u:/d" "$PASS_FILE" 2>/dev/null
+        echo "$nuevo_user:$nuevo_pass" >> "$PASS_FILE"
+
         echo -e "${Verde}[+] Usuario '$nuevo_user' creado con éxito.${Fin}"
       fi
       read -p " Presiona [Enter] para continuar..."
@@ -590,6 +592,12 @@ while true; do
         read -s -p " Nueva contraseña para $mod_user: " nueva_pass
         echo -e ""
         echo "$mod_user:$nueva_pass" | chpasswd
+        
+        # Actualizar contraseña en el registro plano
+        touch "$PASS_FILE"
+        sed -i "/^$mod_user:/d" "$PASS_FILE"
+        echo "$mod_user:$nueva_pass" >> "$PASS_FILE"
+
         echo -e "${Verde}[+] Contraseña de '$mod_user' actualizada correctamente.${Fin}"
       else
         echo -e "${Rojo}[-] El usuario no existe.${Fin}"
@@ -600,6 +608,7 @@ while true; do
       read -p " Usuario a eliminar: " del_user
       if id "$del_user" &>/dev/null; then
         userdel -r "$del_user"
+        sed -i "/^$del_user:/d" "$PASS_FILE" 2>/dev/null
         echo -e "${Verde}[+] Usuario '$del_user' eliminado correctamente.${Fin}"
       else
         echo -e "${Rojo}[-] El usuario no existe.${Fin}"
