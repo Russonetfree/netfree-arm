@@ -58,6 +58,7 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   iptables -I INPUT -p tcp --dport 90 -j ACCEPT
   iptables -I INPUT -p tcp --dport 443 -j ACCEPT
   iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
+  iptables -I INPUT -p tcp --dport 10080 -j ACCEPT
 
   # Configurar Dropbear
   cat << 'EOF_DB' > /etc/default/dropbear
@@ -234,14 +235,14 @@ gestionar_stunnel() {
 
 gestionar_v2ray() {
   echo -e ""
-  echo -e "${Cian}[*] Instalando / Reiniciando V2Ray Core...${Fin}"
+  echo -e "${Cian}[*] Instalando / Configurando V2Ray Core en Puerto 10080...${Fin}"
   bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) 2>/dev/null
   mkdir -p /usr/local/etc/v2ray
   cat << 'EOF_V2' > /usr/local/etc/v2ray/config.json
 {
   "inbounds": [{
     "port": 10080,
-    "listen": "127.0.0.1",
+    "listen": "0.0.0.0",
     "protocol": "vmess",
     "settings": {
       "clients": [{ "id": "b83a38e2-36a3-4631-9a6d-e2511222e3eb", "alterId": 0 }]
@@ -253,7 +254,8 @@ gestionar_v2ray() {
 EOF_V2
   systemctl enable v2ray >/dev/null 2>&1
   systemctl restart v2ray
-  echo -e "${Verde}[+] V2Ray activo.${Fin}"
+  systemctl restart ws_proxy.service 2>/dev/null
+  echo -e "${Verde}[+] V2Ray activo correctamente en puerto 10080 (Sin interferir con WS Proxy).${Fin}"
 }
 
 obtener_informacion_v2ray() {
@@ -269,7 +271,7 @@ obtener_informacion_v2ray() {
   fi
 
   local uuid="b83a38e2-36a3-4631-9a6d-e2511222e3eb"
-  local puerto="8080"
+  local puerto="10080"
   local path_ws="/russo"
 
   echo -e ""
@@ -401,22 +403,12 @@ listar_usuarios_estado() {
         fi
       fi
 
-      # Conteo avanzado de conexiones activas (OpenSSH, Dropbear, Sockets y Logs)
       local total_con=0
-
-      # 1. Verificación por procesos de usuario
       local c_ps=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|bash|sh" | wc -l)
-      
-      # 2. Verificación por sockets netstat en puertos 22/110/90
       local c_net=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep "established" | grep -w "$u" | wc -l)
-
-      # 3. Verificación en usuarios con sesión activa (who/w)
       local c_who=$(who 2>/dev/null | grep -w "$u" | wc -l)
-
-      # 4. Verificación directa en el proceso dropbear asociado al usuario
       local c_db=$(pgrep -u "$u" dropbear 2>/dev/null | wc -l)
 
-      # Sumar la mejor detección encontrada
       total_con=$((c_ps + c_net + c_who + c_db))
 
       if [ "$total_con" -gt 0 ]; then
@@ -455,7 +447,7 @@ while true; do
   echo -e "  ${Blanco}• OpenSSH (Puerto 22)        :${Fin} $(check_port 22)"
   echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
   echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
-  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin} $(check_port 10080)"
+  echo -e "  ${Blanco}• V2Ray (VMess Puerto 10080) :${Fin} $(check_port 10080)"
   echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin} $(check_port 8080)"
   echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
   echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
@@ -470,7 +462,7 @@ while true; do
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
   echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
-  echo -e " ${Cian}[08]${Fin} ${Blanco}Instalar / Activar V2Ray en Puerto 8080/80${Fin}"
+  echo -e " ${Cian}[08]${Fin} ${Blanco}Instalar / Activar V2Ray en Puerto 10080${Fin}"
   echo -e " ${Cian}[09]${Fin} ${Verde}Obtener Enlace VMess / Información V2Ray${Fin}"
   echo -e " ${Cian}[10]${Fin} ${Blanco}Reiniciar/Activar BadVPN UDPGW (Puerto 7300)${Fin}"
   echo -e " ${Cian}[11]${Fin} ${Blanco}Configurar / Modificar Banner SSH${Fin}"
