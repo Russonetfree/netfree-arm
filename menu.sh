@@ -23,25 +23,26 @@ RESPONSE=$(curl -s "$API_URL?key=$USER_KEY")
 
 if echo "$RESPONSE" | grep -q '"status":"ok"'; then
     echo -e "\033[1;32m✅ ¡Licencia Válida! Iniciando instalación completa...\033[0m"
-    sleep 2
+    sleep 1
 
     # Guardar registro de activación
     mkdir -p /etc/netfree
     echo "$USER_KEY" > /etc/netfree/license.key
 
     # =========================================================
-    # INSTALACIÓN REAL DE PAQUETES Y DEPENDENCIAS DEL SISTEMA
+    # INSTALACIÓN DIRECTA Y VISIBLE
     # =========================================================
-    echo -e "\n\033[1;36m📦 Actualizando e instalando paquetes requeridos (SSH, BadVPN, Curl, Screen)...\033[0m"
-    
+    echo -e "\n\033[1;36m📦 Actualizando repositorios del sistema...\033[0m"
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y >/dev/null 2>&1
-    apt-get install -y curl wget screen net-tools openssh-server stunnel4 python3 python3-pip >/dev/null 2>&1
+    apt-get update -y
 
-    # Asegurar directorio de binarios
+    echo -e "\n\033[1;36m⚙️ Instalando componentes (SSH, BadVPN, Curl, Screen, Stunnel)...\033[0m"
+    apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" curl wget screen net-tools openssh-server stunnel4 python3 python3-pip
+
+    # Directorio de ejecutables
     mkdir -p /usr/local/bin
 
-    # Crear la orden directa 'menu' en el sistema
+    # Crear orden ejecutable 'menu'
     cat << 'EOF' > /usr/local/bin/menu
 #!/bin/bash
 clear
@@ -94,14 +95,12 @@ esac
 done
 EOF
 
-    # Permisos de ejecución
     chmod +x /usr/local/bin/menu
 
-    echo -e "\n\033[1;32m🚀 ¡Instalación real completada exitosamente!\033[0m"
+    echo -e "\n\033[1;32m🚀 ¡Instalación completada exitosamente!\033[0m"
     echo -e "\033[1;33mCargando el panel de control...\033[0m"
     sleep 2
 
-    # Iniciar el panel directamente
     /usr/local/bin/menu
 
 else
