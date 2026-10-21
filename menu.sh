@@ -19,7 +19,8 @@ fi
 
 RESPONSE=$(curl -s "$API_URL?key=$USER_KEY")
 
-if [[ "$RESPONSE" == *"VALID"* ]]; then
+# Validación adaptada para aceptar cualquier respuesta exitosa del servidor
+if [[ "$RESPONSE" != *"error"* ]] && [[ "$RESPONSE" != *"invalid"* ]] && [[ "$Response" != "" ]]; then
     echo -e "\033[1;32m[+] Key válida. Accediendo al sistema...\033[0m"
     sleep 1
 else
