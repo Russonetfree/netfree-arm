@@ -36,8 +36,10 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
   RESPONSE=$(curl -s "${API_URL}?key=${REG_KEY}")
 
-  # VALIDACIÓN ESTRICTA: Solo avanza si el servidor responde true, valid o success
-  if [[ "$RESPONSE" == *"true"* ]] || [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"success"* ]]; then
+  # VALIDACIÓN ESTRICTA: Usa jq para comprobar si la respuesta de la API es verdadera
+  VALID_CHECK=$(echo "$RESPONSE" | jq -r '.valid // .success // .status' 2>/dev/null)
+
+  if [ "$VALID_CHECK" = "true" ] || [[ "$RESPONSE" == *'"valid":true'* ]] || [[ "$RESPONSE" == *'"success":true'* ]]; then
     echo -e "${Verde}[+] Key aceptada correctamente.${Fin}"
   else
     echo -e "${Rojo}[-] Key inválida, caducada o ya utilizada.${Fin}"
