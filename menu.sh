@@ -322,7 +322,7 @@ EOF
 obtener_informacion_v2ray() {
   clear
   echo -e "${Cian}====================================================${Fin}"
-  echo -e "${Amarillo}         INFORMACIÓN DE CUENTA V2RAY                ${Fin}"
+  echo -e "${Amarillo}          INFORMACIÓN DE CUENTA V2RAY               ${Fin}"
   echo -e "${Cian}====================================================${Fin}"
 
   local ip_publica=$(curl -s http://checkip.amazonaws.com || wget -qO- http://ipecho.net/plain)
@@ -337,7 +337,7 @@ obtener_informacion_v2ray() {
 
   echo -e ""
   echo -e " ${Blanco}1.${Fin}"
-  echo -e " ${Blanco}IP / Host   :${Fin} ${Cian}${host_v2ray}${Fin}"
+  echo -e " ${Blanco}IP / Host  :${Fin} ${Cian}${host_v2ray}${Fin}"
   echo -e " ${Blanco}Port        :${Fin} ${Amarillo}${puerto}${Fin}"
   echo -e " ${Blanco}TLS         :${Fin} ${Rojo}close${Fin}"
   echo -e " ${Blanco}UUID        :${Fin} ${Blanco}${uuid}${Fin}"
@@ -449,10 +449,11 @@ listar_usuarios_estado() {
   echo -e "${Cian}=====================================================================${Fin}"
   echo -e "${Amarillo}                MOSTRAR USUARIOS REGISTRADOS                         ${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
-  echo -e " ${Blanco}USUARIO          CONTRASEÑA         ESTADO         CONEXIONES${Fin}"
+  echo -e " ${Blanco}USUARIO            CONTRASEÑA         ESTADO         CONEXIONES${Fin}"
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
 
   local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
+  local con_v2ray=$(netstat -tnp 2>/dev/null | grep -E ":(80|8080|10080) " | grep -i "ESTABLISHED" | wc -l)
 
   if [ -z "$usuarios" ]; then
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
@@ -466,21 +467,22 @@ listar_usuarios_estado() {
         fi
       fi
 
-      # Conteo directo de procesos pertenecientes al usuario u
-      local total_con=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|sh|bash" | wc -l)
+      local total_con=0
+      local c_ps=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|bash|sh" | wc -l)
+      local c_net=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep -i "established" | grep -w "$u" | wc -l)
+      local c_who=$(who 2>/dev/null | grep -w "$u" | wc -l)
+      local c_db=$(pgrep -u "$u" dropbear 2>/dev/null | wc -l)
 
-      # Si el contador directo es 0, buscar en conexiones activas de OpenSSH/Dropbear en netstat/lsof
-      if [ "$total_con" -eq 0 ]; then
-        local net_con=$(lsof -u "$u" -i 2>/dev/null | grep -i "established" | wc -l)
-        if [ "$net_con" -gt 0 ]; then
-          total_con=$net_con
-        fi
+      total_con=$((c_ps + c_net + c_who + c_db))
+
+      if [ "$total_con" -eq 0 ] && [ "$con_v2ray" -gt 0 ]; then
+        total_con=$con_v2ray
       fi
 
       if [ "$total_con" -gt 0 ]; then
         printf " %-18s ${Amarillo}%-18s${Fin} ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$pwd_usr" "$total_con"
       else
-        printf " %-18s ${Amarillo}%-18s${Fin} ${Rojo}[ OFFLINE ]${Fin}     0 conex.\n" "$u" "$pwd_usr"
+        printf " %-18s ${Amarillo}%-18s${Fin} ${Rojo}[ OFFLINE ]${Fin}    0 conex.\n" "$u" "$pwd_usr"
       fi
     done
   fi
@@ -497,10 +499,10 @@ while true; do
   clear
   echo -e "\e[1;92m    ____  _   _ ____ ____   ___ \e[1;93m _   _ _____ _____ _____ ____  _____ \e[0m"
   echo -e "\e[1;92m   |  _ \| | | / ___/ ___| / _ \ \e[1;93m| \ | | ____|_   _| ____|  _ \| ____|\e[0m"
-  echo -e "\e[1;93m   | |_) | | | \___ \___ \| | | |\e[1;91m|  \| |  _|   | | |  _| | |_) |  _|   \e[0m"
+  echo -e "\e[1;93m   | |_) | | | \___ \___ \| | | |\e[1;91m|  \| |  _|   | | |  _| | |_) |  _|  \e[0m"
   echo -e "\e[1;93m   |  _ <| |_| |___) |__) | |_| |\e[1;91m| |\  | |___  | | | |___|  _ <| |___ \e[0m"
   echo -e "\e[1;91m   |_| \_\\___/|____/____/ \___/ \e[1;95m|_| \_|_____| |_| |_____|_| \_\_____|\e[0m"
-  echo -e "\e[1;95m                               [ PANEL VIP ]                        \e[0m"
+  echo -e "\e[1;95m                             [ PANEL VIP ]                             \e[0m"
   echo -e "${Cian}=====================================================================\e[0m"
 
   echo -e " ${Amarillo}ESTADO Y CAPACIDAD DE LA VPS:${Fin}"
