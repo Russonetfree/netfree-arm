@@ -34,7 +34,6 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   fi
 
   echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
-  # Validación de Key contra servidor API
   RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -d "{\"key\": \"$REG_KEY\"}")
   
   if [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"true"* ]] || [ -n "$REG_KEY" ]; then
@@ -48,7 +47,16 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
   apt-get update -y
-  apt-get install -y -o Dpkg::Options::="--force-confold" dropbear stunnel4 python3 net-tools lsof cmake git curl wget
+  apt-get install -y -o Dpkg::Options::="--force-confold" dropbear stunnel4 python3 net-tools lsof cmake git curl wget ufw iptables
+
+  # Limpiar reglas del firewall para permitir puertos de conexión
+  ufw disable 2>/dev/null
+  iptables -F
+  iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+  iptables -I INPUT -p tcp --dport 110 -j ACCEPT
+  iptables -I INPUT -p tcp --dport 90 -j ACCEPT
+  iptables -I INPUT -p tcp --dport 443 -j ACCEPT
+  iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
 
   # Configurar Dropbear
   cat << 'EOF_DB' > /etc/default/dropbear
@@ -80,7 +88,7 @@ EOF_ST
   systemctl enable stunnel4 >/dev/null 2>&1
   systemctl restart stunnel4
 
-  # Configurar WebSocket Proxy
+  # Configurar WebSocket Proxy (Doble puerto 80 y 8080)
   cat << 'EOF_PY' > /usr/local/bin/ws_proxy.py
 import socket, threading
 
@@ -103,17 +111,21 @@ def handle_client(client_socket):
     except:
         client_socket.close()
 
-def main():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(('0.0.0.0', 8080))
-    server.listen(100)
-    while True:
-        client, _ = server.accept()
-        threading.Thread(target=handle_client, args=(client,)).start()
+def start_listener(port):
+    try:
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('0.0.0.0', port))
+        server.listen(100)
+        while True:
+            client, _ = server.accept()
+            threading.Thread(target=handle_client, args=(client,)).start()
+    except Exception as e:
+        pass
 
 if __name__ == '__main__':
-    main()
+    threading.Thread(target=start_listener, args=(80,)).start()
+    threading.Thread(target=start_listener, args=(8080,)).start()
 EOF_PY
 
   cat << 'EOF_WSS' > /etc/systemd/system/ws_proxy.service
