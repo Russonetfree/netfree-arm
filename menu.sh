@@ -35,10 +35,8 @@ if [ ! -f "$INSTALL_CHECK" ]; then
 
   echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
   
-  # Validación mediante el método original compatible con tu API (GET / parámetros)
   RESPONSE=$(curl -s "${API_URL}?key=${REG_KEY}")
 
-  # Si tu API responde con éxito o la key es aceptada
   if [[ "$RESPONSE" == *"true"* ]] || [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"success"* ]] || [ -n "$REG_KEY" ]; then
     echo -e "${Verde}[+] Key aceptada correctamente.${Fin}"
   else
@@ -403,12 +401,23 @@ listar_usuarios_estado() {
         fi
       fi
 
+      # Conteo avanzado de conexiones activas (OpenSSH, Dropbear, Sockets y Logs)
       local total_con=0
-      if ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|bash|sh" &>/dev/null; then
-        total_con=$(ps -u "$u" --no-headers 2>/dev/null | wc -l)
-      elif who | grep -w "$u" &>/dev/null; then
-        total_con=$(who | grep -w "$u" | wc -l)
-      fi
+
+      # 1. Verificación por procesos de usuario
+      local c_ps=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|bash|sh" | wc -l)
+      
+      # 2. Verificación por sockets netstat en puertos 22/110/90
+      local c_net=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep "established" | grep -w "$u" | wc -l)
+
+      # 3. Verificación en usuarios con sesión activa (who/w)
+      local c_who=$(who 2>/dev/null | grep -w "$u" | wc -l)
+
+      # 4. Verificación directa en el proceso dropbear asociado al usuario
+      local c_db=$(pgrep -u "$u" dropbear 2>/dev/null | wc -l)
+
+      # Sumar la mejor detección encontrada
+      total_con=$((c_ps + c_net + c_who + c_db))
 
       if [ "$total_con" -gt 0 ]; then
         printf " %-18s ${Amarillo}%-18s${Fin} ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$pwd_usr" "$total_con"
