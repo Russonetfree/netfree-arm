@@ -466,27 +466,14 @@ listar_usuarios_estado() {
         fi
       fi
 
-      # Validación precisa por usuario individual basada en procesos y sockets activos suyos
-      local total_con=0
-      local pids=$(pgrep -u "$u" 2>/dev/null)
-      if [ ! -z "$pids" ]; then
-        for pid in $pids; do
-          local sockets=$(ls -l /proc/$pid/fd/ 2>/dev/null | grep socket | awk '{print $9}' | tr -d '[]')
-          for sock in $sockets; do
-            if grep -q "$sock" /proc/net/tcp /proc/net/tcp6 2>/dev/null; then
-              if grep -q " 01 " <(grep "$sock" /proc/net/tcp /proc/net/tcp6 2>/dev/null); then
-                total_con=$((total_con + 1))
-              fi
-            fi
-          done
-        done
-      fi
+      # Conteo directo de procesos pertenecientes al usuario u
+      local total_con=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|sh|bash" | wc -l)
 
-      # Respaldar con conteo general de sesiones si hay procesos activos de dropbear/sshd del usuario
+      # Si el contador directo es 0, buscar en conexiones activas de OpenSSH/Dropbear en netstat/lsof
       if [ "$total_con" -eq 0 ]; then
-        local c_drop=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd" | wc -l)
-        if [ "$c_drop" -gt 0 ]; then
-          total_con=$c_drop
+        local net_con=$(lsof -u "$u" -i 2>/dev/null | grep -i "established" | wc -l)
+        if [ "$net_con" -gt 0 ]; then
+          total_con=$net_con
         fi
       fi
 
