@@ -42,10 +42,8 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
   RESPONSE=$(curl -s "${API_URL}?key=${REG_KEY}")
 
-  # VALIDACIÓN CON EL SERVIDOR
-  VALID_CHECK=$(echo "$RESPONSE" | jq -r '.valid // .success // .status' 2>/dev/null)
-
-  if [ "$VALID_CHECK" = "true" ] || [[ "$RESPONSE" == *'"valid":true'* ]] || [[ "$RESPONSE" == *'"success":true'* ]]; then
+  # VALIDACIÓN FLEXIBLE CON EL SERVIDOR (Acepta keys válidas recién generadas)
+  if [[ "$RESPONSE" == *'"valid":true'* ]] || [[ "$RESPONSE" == *'"success":true'* ]] || [[ "$RESPONSE" == *'"status":"ok"'* ]] || [[ "$RESPONSE" == *'"status":"active"'* ]] || [[ "$RESPONSE" == *'Licencia'* && "$RESPONSE" != *'utilizada'* ]]; then
     echo -e "${Verde}[+] Key aceptada correctamente.${Fin}"
   else
     echo -e "${Rojo}[-] Key inválida, caducada o ya utilizada.${Fin}"
