@@ -482,18 +482,19 @@ listar_usuarios_estado() {
   echo -e " ${Blanco}USUARIO            ESTADO         CONEXIONES${Fin}"
   echo -e "${Cian}----------------------------------------------------${Fin}"
 
-  # Filtrar usuarios reales de la VPN
   local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
 
   if [ -z "$usuarios" ]; then
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
   else
     for u in $usuarios; do
-      # Comprobar conexiones activas en las sesiones de red y dropbear/ssh
-      local active_ssh=$(ps -u "$u" -o pid,comm 2>/dev/null | grep -E "sshd|dropbear|python" | wc -l)
-      
-      if [ "$active_ssh" -gt 0 ]; then
-        printf " %-18s ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$active_ssh"
+      # Comprobar conexiones reales de Dropbear asociadas al usuario mediante logs/procesos activos
+      local drop_con=$(ps aux | grep dropbear | grep "$u" | grep -v grep | wc -l)
+      local ssh_con=$(ps aux | grep sshd | grep "$u" | grep -v grep | wc -l)
+      local total_con=$((drop_con + ssh_con))
+
+      if [ "$total_con" -gt 0 ]; then
+        printf " %-18s ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$total_con"
       else
         printf " %-18s ${Rojo}[ OFFLINE ]${Fin}    0 conex.\n" "$u"
       fi
@@ -592,7 +593,7 @@ while true; do
       echo -e ""
       echo -e "${Cian}[*] Reiniciando WebSocket Proxy en puertos 80 y 8080...${Fin}"
       systemctl restart ws_proxy.service
-      echo -e "${Verde}[+] Servicio WebSocket activo correctamente.${Fin}"
+      echo -e "${Verde}[+] WebSocket activo correctamente.${Fin}"
       read -p " Presiona [Enter] para continuar..."
       ;;
     6)
