@@ -452,13 +452,15 @@ EOF
 
 listar_usuarios_estado() {
   clear
-  echo -e "${Cian}=====================================================================${Fin}"
+  echo -e "${Cian}=====================================================================\e[0m"
   echo -e "${Amarillo}                MOSTRAR USUARIOS REGISTRADOS                         ${Fin}"
-  echo -e "${Cian}=====================================================================${Fin}"
+  echo -e "${Cian}=====================================================================\e[0m"
   echo -e " ${Blanco}USUARIO            CONTRASEÑA         ESTADO         CONEXIONES${Fin}"
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
 
   local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
+  # Capturamos conexiones activas tanto en puertos directos (22, 110, 90) como en los puertos de WebSocket (80, 8080)
+  local con_ws_total=$(netstat -tnp 2>/dev/null | grep -E ":(80|8080|22|110|90) " | grep -i "ESTABLISHED" | wc -l)
 
   if [ -z "$usuarios" ]; then
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
@@ -472,8 +474,13 @@ listar_usuarios_estado() {
         fi
       fi
 
-      # Conexiones SSH / Dropbear estrictas por sockets de red activos
+      # Conexiones por sockets específicos del usuario
       local total_con=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep -i "ESTABLISHED" | grep -w "$u" | wc -l)
+
+      # Si está conectado por WebSocket pero netstat no vincula directo al usuario, se le asigna la conexión activa del proxy
+      if [ "$total_con" -eq 0 ] && [ "$con_ws_total" -gt 0 ] && (who 2>/dev/null | grep -q -w "$u" || pgrep -u "$u" dropbear >/dev/null 2>&1 || pgrep -u "$u" sshd >/dev/null 2>&1); then
+        total_con=$con_ws_total
+      fi
 
       if [ "$total_con" -gt 0 ]; then
         printf " %-18s ${Amarillo}%-18s${Fin} ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$pwd_usr" "$total_con"
@@ -483,7 +490,7 @@ listar_usuarios_estado() {
     done
   fi
 
-  echo -e "${Cian}=====================================================================${Fin}"
+  echo -e "${Cian}=====================================================================\e[0m"
   read -p " Presiona [Enter] para continuar..."
 }
 
