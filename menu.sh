@@ -19,7 +19,7 @@ Blanco="\e[1;97m"
 Fin="\e[0m"
 
 # =====================================================================
-# RUTINA DE INSTALACIÓN INICIAL (SE EJECUTA SI LA VPS ES NUEVA)
+# RUTINA DE INSTALACIÓN INICIAL CON VALIDACIÓN ESTRICTA DE KEY
 # =====================================================================
 if [ ! -f "$INSTALL_CHECK" ]; then
   clear
@@ -29,17 +29,19 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   
   read -p " Ingrese su Key de activación: " REG_KEY
   if [ -z "$REG_KEY" ]; then
-    echo -e "${Rojo}[-] Debe ingresar una Key válida.${Fin}"
+    echo -e "${Rojo}[-] Error: Debe ingresar una Key válida.${Fin}"
     exit 1
   fi
 
-  echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
+  echo -e "${Cian}[*] Validando Key con el servidor API...${Fin}"
   RESPONSE=$(curl -s -X POST "$API_URL" -H "Content-Type: application/json" -d "{\"key\": \"$REG_KEY\"}")
-  
-  if [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"true"* ]] || [ -n "$REG_KEY" ]; then
-    echo -e "${Verde}[+] Key aceptada correctamente.${Fin}"
+
+  # Validación estricta: La respuesta debe confirmar explícitamente que la key es válida
+  if echo "$RESPONSE" | grep -qiE '"status"\s*:\s*"valid"|"valid"\s*:\s*true|"status"\s*:\s*"success"'; then
+    echo -e "${Verde}[+] Key aceptada y validada con éxito.${Fin}"
   else
-    echo -e "${Rojo}[-] Key inválida o expirada.${Fin}"
+    echo -e "${Rojo}[-] ERROR: Key inválida, caducada o ya utilizada.${Fin}"
+    echo -e "${Rojo}[-] Respuesta del servidor: ${RESPONSE}${Fin}"
     exit 1
   fi
 
@@ -49,7 +51,7 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   apt-get update -y
   apt-get install -y -o Dpkg::Options::="--force-confold" dropbear stunnel4 python3 net-tools lsof cmake git curl wget ufw iptables
 
-  # Limpiar reglas del firewall para permitir puertos de conexión
+  # Limpiar y abrir puertos en el firewall
   ufw disable 2>/dev/null
   iptables -F
   iptables -I INPUT -p tcp --dport 80 -j ACCEPT
@@ -88,44 +90,67 @@ EOF_ST
   systemctl enable stunnel4 >/dev/null 2>&1
   systemctl restart stunnel4
 
-  # Configurar WebSocket Proxy (Doble puerto 80 y 8080)
+  # Configurar WebSocket Proxy Compatible con HTTP Custom
   cat << 'EOF_PY' > /usr/local/bin/ws_proxy.py
 import socket, threading
 
+RESPONSE = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"
+
 def handle_client(client_socket):
     try:
-        request = client_socket.recv(1024)
+        request = client_socket.recv(2048)
+        if not request:
+            client_socket.close()
+            return
+
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.connect(('127.0.0.1', 110))
-        server_socket.sendall(request)
-        
+
+        if b"Upgrade: websocket" in request or b"HTTP/" in request:
+            client_socket.sendall(RESPONSE)
+        else:
+            server_socket.sendall(request)
+
         def forward(src, dst):
-            while True:
-                data = src.recv(4096)
-                if not data: break
-                dst.sendall(data)
+            try:
+                while True:
+                    data = src.recv(4096)
+                    if not data: break
+                    dst.sendall(data)
+            except:
+                pass
+            finally:
+                try: src.close()
+                except: pass
+                try: dst.close()
+                except: pass
 
         t1 = threading.Thread(target=forward, args=(client_socket, server_socket))
         t2 = threading.Thread(target=forward, args=(server_socket, client_socket))
-        t1.start(); t2.start()
+        t1.daemon = True
+        t2.daemon = True
+        t1.start()
+        t2.start()
     except:
-        client_socket.close()
+        try: client_socket.close()
+        except: pass
 
 def start_listener(port):
     try:
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(('0.0.0.0', port))
-        server.listen(100)
+        server.listen(200)
         while True:
             client, _ = server.accept()
-            threading.Thread(target=handle_client, args=(client,)).start()
+            threading.Thread(target=handle_client, args=(client,), daemon=True).start()
     except Exception as e:
         pass
 
 if __name__ == '__main__':
-    threading.Thread(target=start_listener, args=(80,)).start()
-    threading.Thread(target=start_listener, args=(8080,)).start()
+    threading.Thread(target=start_listener, args=(80,), daemon=True).start()
+    threading.Thread(target=start_listener, args=(8080,), daemon=True).start()
+    threading.Event().wait()
 EOF_PY
 
   cat << 'EOF_WSS' > /etc/systemd/system/ws_proxy.service
@@ -145,7 +170,7 @@ EOF_WSS
   systemctl enable ws_proxy.service >/dev/null 2>&1
   systemctl restart ws_proxy.service
 
-  # Marcar como instalado y configurar auto-inicio
+  # Marcar como instalado y auto-inicio
   touch "$INSTALL_CHECK"
   touch "$PASS_FILE"
   sed -i '/^menu$/d' /root/.bashrc
