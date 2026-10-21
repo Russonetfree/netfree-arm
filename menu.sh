@@ -19,7 +19,7 @@ Blanco="\e[1;97m"
 Fin="\e[0m"
 
 # =====================================================================
-# INSTALACIÓN INICIAL CON VALIDACIÓN DE KEY + CONFIGURACIÓN DE ARM3
+# RUTINA DE INSTALACIÓN INICIAL CON TU MÉTODO ORIGINAL DE API
 # =====================================================================
 if [ ! -f "$INSTALL_CHECK" ]; then
   clear
@@ -34,6 +34,7 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   fi
 
   echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
+  
   RESPONSE=$(curl -s "${API_URL}?key=${REG_KEY}")
 
   if [[ "$RESPONSE" == *"true"* ]] || [[ "$RESPONSE" == *"valid"* ]] || [[ "$RESPONSE" == *"success"* ]] || [ -n "$REG_KEY" ]; then
@@ -97,7 +98,7 @@ EOF
   iptables -P OUTPUT ACCEPT
   iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
 
-  # PROXY PYTHON DE ARM3 (SECT.SELECT MULTIPLEXADO)
+  # PROXY PYTHON UNIFICADO (WS + V2RAY EN PUERTOS 80 Y 8080)
   cat << 'EOF' > /usr/local/bin/ws_proxy.py
 import socket, select, threading
 
@@ -112,15 +113,13 @@ def handle_client(client_sock):
             client_sock.close()
             return
 
-        if b"GET /russo" in request or b"Path: /russo" in request or b"/russo" in request:
-            target_port = V2RAY_INTERNAL_PORT
-            target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            target_sock.connect(('127.0.0.1', target_port))
+        target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        if b"/russo" in request:
+            target_sock.connect(('127.0.0.1', V2RAY_INTERNAL_PORT))
             target_sock.sendall(request)
         else:
-            target_port = SSH_PORT
-            target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            target_sock.connect(('127.0.0.1', target_port))
+            target_sock.connect(('127.0.0.1', SSH_PORT))
             client_sock.sendall(b'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')
 
         sockets = [client_sock, target_sock]
@@ -454,6 +453,7 @@ listar_usuarios_estado() {
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
 
   local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
+  local con_v2ray=$(netstat -tnp 2>/dev/null | grep -E ":(80|8080|10080) " | grep -i "ESTABLISHED" | wc -l)
 
   if [ -z "$usuarios" ]; then
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
@@ -469,11 +469,15 @@ listar_usuarios_estado() {
 
       local total_con=0
       local c_ps=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|bash|sh" | wc -l)
-      local c_net=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep "established" | grep -w "$u" | wc -l)
+      local c_net=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep -i "established" | grep -w "$u" | wc -l)
       local c_who=$(who 2>/dev/null | grep -w "$u" | wc -l)
       local c_db=$(pgrep -u "$u" dropbear 2>/dev/null | wc -l)
 
       total_con=$((c_ps + c_net + c_who + c_db))
+
+      if [ "$total_con" -eq 0 ] && [ "$con_v2ray" -gt 0 ]; then
+        total_con=$con_v2ray
+      fi
 
       if [ "$total_con" -gt 0 ]; then
         printf " %-18s ${Amarillo}%-18s${Fin} ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$pwd_usr" "$total_con"
@@ -483,7 +487,7 @@ listar_usuarios_estado() {
     done
   fi
 
-  echo -e "${Cian}=====================================================================${Fin}"
+  echo -e "${Cian}====================================================================${Fin}"
   read -p " Presiona [Enter] para continuar..."
 }
 
