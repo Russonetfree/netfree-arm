@@ -474,6 +474,38 @@ EOF
   echo -e "${Verde}[+] BadVPN activo en puerto 7300.${Fin}"
 }
 
+listar_usuarios_estado() {
+  clear
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e "${Amarillo}          ESTADO DE USUARIOS REGISTRADOS            ${Fin}"
+  echo -e "${Cian}====================================================${Fin}"
+  echo -e " ${Blanco}USUARIO            ESTADO         CONEXIONES${Fin}"
+  echo -e "${Cian}----------------------------------------------------${Fin}"
+
+  local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd)
+
+  if [ -z "$usuarios" ]; then
+    echo -e " ${Rojo}No hay usuarios SSH/VPN creados en el sistema.${Fin}"
+  else
+    for u in $usuarios; do
+      # Contar conexiones SSH activas
+      local ssh_con=$(ps aux | grep sshd | grep -w "$u" | grep -v grep | wc -l)
+      # Contar conexiones Dropbear activas
+      local drop_con=$(ps aux | grep dropbear | grep -w "$u" | grep -v grep | wc -l)
+      local total_con=$((ssh_con + drop_con))
+
+      if [ "$total_con" -gt 0 ]; then
+        printf " %-18s ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$total_con"
+      else
+        printf " %-18s ${Rojo}[ OFFLINE ]${Fin}    0 conex.\n" "$u"
+      fi
+    done
+  fi
+
+  echo -e "${Cian}====================================================${Fin}"
+  read -p " Presiona [Enter] para continuar..."
+}
+
 while true; do
   clear
   echo -e "\e[1;92m    ____  _   _ ____ ____   ___ \e[1;93m _   _ _____ _____ _____ ____  _____ \e[0m"
@@ -505,7 +537,7 @@ while true; do
   echo -e " ${Cian}[01]${Fin} ${Blanco}Crear Usuario${Fin}"
   echo -e " ${Cian}[02]${Fin} ${Blanco}Cambiar Contraseña${Fin}"
   echo -e " ${Cian}[03]${Fin} ${Blanco}Eliminar Usuario${Fin}"
-  echo -e " ${Cian}[04]${Fin} ${Blanco}Listar Usuarios${Fin}"
+  echo -e " ${Cian}[04]${Fin} ${Verde}Listar Usuarios (Ver Estado ONLINE/OFFLINE)${Fin}"
   echo -e " ${Cian}[05]${Fin} ${Blanco}Reiniciar WebSocket (Puertos 80 y 8080)${Fin}"
   echo -e " ${Cian}[06]${Fin} ${Blanco}Instalar / Activar Dropbear (Puertos 110/90)${Fin}"
   echo -e " ${Cian}[07]${Fin} ${Blanco}Instalar / Activar SSL Tunnel (Puerto 443)${Fin}"
@@ -556,11 +588,7 @@ while true; do
       read -p " Presiona [Enter] para continuar..."
       ;;
     4)
-      echo -e ""
-      echo -e "${Amarillo}=== USUARIOS DEL SISTEMA ===${Fin}"
-      awk -F: '$3 >= 1000 {print $1}' /etc/passwd
-      echo -e "${Amarillo}============================${Fin}"
-      read -p " Presiona [Enter] para continuar..."
+      listar_usuarios_estado
       ;;
     5)
       echo -e ""
