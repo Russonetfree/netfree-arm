@@ -33,10 +33,16 @@ if [ ! -f "$INSTALL_CHECK" ]; then
     exit 1
   fi
 
+  # VALIDACIÓN DE FORMATO LOCAL (Debe ser tipo RUSSO-XXXX-XXXX)
+  if [[ ! "$REG_KEY" =~ ^RUSSO-[A-Z0-9]{4}-[A-Z0-9]{4}$ ]]; then
+    echo -e "${Rojo}[-] Formato de Key inválido. Debe ser como RUSSO-XXXX-XXXX.${Fin}"
+    exit 1
+  fi
+
   echo -e "${Cian}[*] Validando Key con el servidor...${Fin}"
   RESPONSE=$(curl -s "${API_URL}?key=${REG_KEY}")
 
-  # VALIDACIÓN ESTRICTA: Usa jq para comprobar si la respuesta de la API es verdadera
+  # VALIDACIÓN CON EL SERVIDOR
   VALID_CHECK=$(echo "$RESPONSE" | jq -r '.valid // .success // .status' 2>/dev/null)
 
   if [ "$VALID_CHECK" = "true" ] || [[ "$RESPONSE" == *'"valid":true'* ]] || [[ "$RESPONSE" == *'"success":true'* ]]; then
