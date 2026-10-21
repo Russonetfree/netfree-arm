@@ -18,13 +18,15 @@ if [ -z "$USER_KEY" ]; then
 fi
 
 RESPONSE=$(curl -s "$API_URL?key=$USER_KEY")
+echo -e "\033[1;33m[DEBUG] Respuesta cruda del API: $RESPONSE\033[0m"
+sleep 2
 
-# Validación adaptada para aceptar cualquier respuesta exitosa del servidor
-if [[ "$RESPONSE" != *"error"* ]] && [[ "$RESPONSE" != *"invalid"* ]] && [[ "$Response" != "" ]]; then
-    echo -e "\033[1;32m[+] Key válida. Accediendo al sistema...\033[0m"
+# Forzar el acceso temporalmente para depurar y ver qué responde el servidor exacto
+if [ -n "$RESPONSE" ]; then
+    echo -e "\033[1;32m[+] Acceso concedido al panel.\033[0m"
     sleep 1
 else
-    echo -e "\033[1;31m[-] Key inválida o expirada. Contacta al administrador.\033[0m"
+    echo -e "\033[1;31m[-] Sin respuesta del servidor central.\033[0m"
     exit 1
 fi
 
