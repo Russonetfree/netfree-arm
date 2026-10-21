@@ -482,15 +482,16 @@ listar_usuarios_estado() {
   echo -e " ${Blanco}USUARIO            ESTADO         CONEXIONES${Fin}"
   echo -e "${Cian}----------------------------------------------------${Fin}"
 
-  local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd)
+  # Filtrar para excluir usuarios del sistema operativo
+  local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
 
   if [ -z "$usuarios" ]; then
-    echo -e " ${Rojo}No hay usuarios SSH/VPN creados en el sistema.${Fin}"
+    echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
   else
     for u in $usuarios; do
-      # Contar conexiones SSH activas
-      local ssh_con=$(ps aux | grep sshd | grep -w "$u" | grep -v grep | wc -l)
-      # Contar conexiones Dropbear activas
+      # Contar conexiones activas de SSH directamente ligadas a la terminal
+      local ssh_con=$(who | grep -w "$u" | wc -l)
+      # Contar conexiones activas vía Dropbear
       local drop_con=$(ps aux | grep dropbear | grep -w "$u" | grep -v grep | wc -l)
       local total_con=$((ssh_con + drop_con))
 
