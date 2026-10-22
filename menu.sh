@@ -104,7 +104,7 @@ EOF
   iptables -P OUTPUT ACCEPT
   iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
 
-  # PROXY PYTHON UNIFICADO (WS + V2RAY EN PUERTOS 80 Y 8080)
+  # PROXY PYTHON UNIFICADO ORIGINAL Y FUNCIONAL
   cat << 'EOF' > /usr/local/bin/ws_proxy.py
 import socket, select, threading
 
@@ -198,7 +198,7 @@ EOF
 fi
 
 # =====================================================================
-# FUNCIONES DEL PANEL DE ADMINISTRACIÓN
+# FUNCIONES DEL PANEL DE ADMINISTRACIÓN (VERSIÓN ORIGINAL ESTABLE)
 # =====================================================================
 
 check_port() {
@@ -445,6 +445,7 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
+  systemctl enable bavar >/dev/null 2>&1
   systemctl enable badvpn.service >/dev/null 2>&1
   systemctl restart badvpn.service
   echo -e "${Verde}[+] BadVPN activo en puerto 7300.${Fin}"
@@ -452,14 +453,13 @@ EOF
 
 listar_usuarios_estado() {
   clear
-  echo -e "${Cian}=====================================================================${Fin}"
+  echo -e "${Cian}====================================================================s${Fin}"
   echo -e "${Amarillo}                MOSTRAR USUARIOS REGISTRADOS                         ${Fin}"
   echo -e "${Cian}=====================================================================${Fin}"
   echo -e " ${Blanco}USUARIO            CONTRASEÑA         ESTADO         CONEXIONES${Fin}"
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
 
   local usuarios=$(awk -F: '$3 >= 1000 && $1 != "nobody" && $1 != "ubuntu" && $1 != "opc" && $1 !~ /^snap/ {print $1}' /etc/passwd)
-  local con_v2ray=$(netstat -tnp 2>/dev/null | grep -E ":(80|8080|10080) " | grep -i "ESTABLISHED" | wc -l)
 
   if [ -z "$usuarios" ]; then
     echo -e " ${Rojo}No hay usuarios SSH/VPN registrados.${Fin}"
@@ -473,20 +473,11 @@ listar_usuarios_estado() {
         fi
       fi
 
-      local total_con=0
-      local c_ps=$(ps -u "$u" -o comm= 2>/dev/null | grep -E "dropbear|sshd|bash|sh" | wc -l)
-      local c_net=$(netstat -tnp 2>/dev/null | grep -E ":(22|110|90) " | grep -i "established" | grep -w "$u" | wc -l)
-      local c_who=$(who 2>/dev/null | grep -w "$u" | wc -l)
-      local c_db=$(pgrep -u "$u" dropbear 2>/dev/null | wc -l)
-
-      total_con=$((c_ps + c_net + c_who + c_db))
-
-      if [ "$total_con" -eq 0 ] && [ "$con_v2ray" -gt 0 ]; then
-        total_con=$con_v2ray
-      fi
-
-      if [ "$total_con" -gt 0 ]; then
-        printf " %-18s ${Amarillo}%-18s${Fin} ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$pwd_usr" "$total_con"
+      # Conteo original funcional de la tarde
+      local total_con=$(ps -u "$u" | grep -v "PID" | wc -l)
+      if [ "$total_con" -gt 1 ]; then
+        local conex_real=$((total_con - 1))
+        printf " %-18s ${Amarillo}%-18s${Fin} ${Verde}[ ONLINE ]${Fin}     %-2s conex.\n" "$u" "$pwd_usr" "$conex_real"
       else
         printf " %-18s ${Amarillo}%-18s${Fin} ${Rojo}[ OFFLINE ]${Fin}    0 conex.\n" "$u" "$pwd_usr"
       fi
