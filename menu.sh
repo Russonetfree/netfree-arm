@@ -58,11 +58,12 @@ if [ ! -f "$INSTALL_CHECK" ]; then
   apt-get install -y -o Dpkg::Options::="--force-confold" python3 python3-pip curl wget git net-tools iptables build-essential cmake nano lsof dropbear stunnel4 unzip jq
 
   cat << 'EOF' > /etc/issue.net
-<h3 style="text-align:center;">
-  <font color="#FF0000">RUSSONET VPN</font> &#127916; <font color="#FF7F50">Youtube</font><br>
+<div style="text-align:center;">
+  <font color="#FF0000" size="4"><b>RUSSONET VPN</b></font> &#127916; <font color="#FF7F50">Youtube</font><br>
   &#128233; <font color="#FFAB00">Redes Sociales</font> | &#127760; <font color="#8FBC8F">Internet</font><br>
-  &#128587;&#127997; <font color="#E040FB">VideoLlamadas</font> | Contacto russotvbox77@gmail.com
-</h3>
+  &#128587;&#127997; <font color="#E040FB">VideoLlamadas</font><br>
+  <font color="#00FF00">Contacto:</font> <a href="mailto:russotvbox77@gmail.com"><font color="#0000FF">russotvbox77@gmail.com</font></a>
+</div>
 EOF
 
   cat << 'EOF' > /etc/default/dropbear
@@ -287,8 +288,8 @@ EOF
 
 gestionar_v2ray() {
   echo -e ""
-  echo -e "${Cian}[*] Instalando V2Ray Core...${Fin}"
-  bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
+  echo -e "${Cian}[*] Instalando y configurando V2Ray Core...${Fin}"
+  bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) >/dev/null 2>&1
 
   mkdir -p /usr/local/etc/v2ray
   cat << 'EOF' > /usr/local/etc/v2ray/config.json
@@ -319,10 +320,30 @@ gestionar_v2ray() {
 }
 EOF
 
+  cat << 'EOF' > /etc/systemd/system/v2ray.service
+[Unit]
+Description=V2Ray Service
+After=network.target nss-lookup.target
+
+[Service]
+Type=simple
+User=root
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ExecStart=/usr/bin/v2ray/v2ray -config /usr/local/etc/v2ray/config.json
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
   systemctl enable v2ray >/dev/null 2>&1
   systemctl restart v2ray
   systemctl restart ws_proxy.service
-  echo -e "${Verde}[+] V2Ray instalado correctamente.${Fin}"
+  echo -e "${Verde}[+] V2Ray instalado y configurado correctamente.${Fin}"
 }
 
 obtener_informacion_v2ray() {
@@ -472,7 +493,6 @@ listar_usuarios_estado() {
         fi
       fi
 
-      # Conteo exacto de procesos de la tarde (Bartolo)
       local total_con=$(ps -u "$u" 2>/dev/null | grep -v "PID" | wc -l)
       if [ "$total_con" -gt 1 ]; then
         local conex_real=$((total_con - 1))
@@ -495,26 +515,26 @@ while true; do
   clear
   echo -e "\e[1;92m    ____  _   _ ____ ____   ___ \e[1;93m _   _ _____ _____ _____ ____  _____ \e[0m"
   echo -e "\e[1;92m   |  _ \| | | / ___/ ___| / _ \ \e[1;93m| \ | | ____|_   _| ____|  _ \| ____|\e[0m"
-  echo -e "\e[1;93m   | |_) | | | \___ \___ \| | | |\e[1;91m|  \| |  _|   | | |  _| | |_) |  _|  \e[0m"
+  echo -e "\e[1;93m   | |_) | | | \___ \___ \| | | |\e[1;91m|  \| |  _|   | | |  _| | |_) |  _|   \e[0m"
   echo -e "\e[1;93m   |  _ <| |_| |___) |__) | |_| |\e[1;91m| |\  | |___  | | | |___|  _ <| |___ \e[0m"
   echo -e "\e[1;91m   |_| \_\\___/|____/____/ \___/ \e[1;95m|_| \_|_____| |_| |_____|_| \_\_____|\e[0m"
-  echo -e "\e[1;95m                             [ PANEL VIP ]                             \e[0m"
+  echo -e "\e[1;95m                            [ PANEL VIP ]                             \e[0m"
   echo -e "${Cian}=====================================================================\e[0m"
 
   echo -e " ${Amarillo}ESTADO Y CAPACIDAD DE LA VPS:${Fin}"
-  echo -e "  ${Blanco}• Sistema Operativo  :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
-  echo -e "  ${Blanco}• Uso de CPU         :${Fin} ${Amarillo}$(get_cpu_usage)${Fin}"
-  echo -e "  ${Blanco}• Memoria RAM        :${Fin} ${Cian}$(get_ram_usage)${Fin}"
-  echo -e "  ${Blanco}• Almacenamiento     :${Fin} ${Magenta}$(get_disk_usage)${Fin}"
+  echo -e "   ${Blanco}• Sistema Operativo  :${Fin} ${Verde}$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d '"' -f2)${Fin}"
+  echo -e "   ${Blanco}• Uso de CPU         :${Fin} ${Amarillo}$(get_cpu_usage)${Fin}"
+  echo -e "   ${Blanco}• Memoria RAM        :${Fin} ${Cian}$(get_ram_usage)${Fin}"
+  echo -e "   ${Blanco}• Almacenamiento     :${Fin} ${Magenta}$(get_disk_usage)${Fin}"
   echo -e "${Cian}---------------------------------------------------------------------${Fin}"
   echo -e " ${Amarillo}PUERTOS Y SERVICIOS INSTALADOS:${Fin}"
-  echo -e "  ${Blanco}• OpenSSH (Puerto 22)        :${Fin} $(check_port 22)"
-  echo -e "  ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
-  echo -e "  ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
-  echo -e "  ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin} $(check_port 10080)"
-  echo -e "  ${Blanco}• WS Proxy (Puertos 80/8080):${Fin} $(check_port 8080)"
-  echo -e "  ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
-  echo -e "  ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
+  echo -e "   ${Blanco}• OpenSSH (Puerto 22)        :${Fin} $(check_port 22)"
+  echo -e "   ${Blanco}• Dropbear (Puertos 110/90) :${Fin} $(check_port 110)"
+  echo -e "   ${Blanco}• SSL Tunnel (Puerto 443)    :${Fin} $(check_port 443)"
+  echo -e "   ${Blanco}• V2Ray (VLESS/VMess 80/8080):${Fin} $(check_port 10080)"
+  echo -e "   ${Blanco}• WS Proxy (Puertos 80/8080):${Fin} $(check_port 8080)"
+  echo -e "   ${Blanco}• BadVPN UDPGW (Puerto 7300):${Fin} $(check_port 7300)"
+  echo -e "   ${Blanco}• Auto-Inicio del Menú     :${Fin} $(check_autostart)"
   echo -e "${Cian}=====================================================================\e[0m"
   echo -e " ${Blanco}Hora actual :${Fin} ${Amarillo}$(date +%T)${Fin}"
   echo -e " ${Blanco}Firma       :${Fin} ${Magenta}RUSSO NETFREE VIP${Fin}"
